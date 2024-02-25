@@ -123,7 +123,7 @@ O Rails Usa o Padrão MVC (Model-View-Controller)
 
 MVC é um padrão de design que divide as responsabilidades de um aplicativo para facilitar o raciocínio. Rails segue esse padrão de design por convenção.
 
-![Imagem Modelo MVC](imagens\mvc.JPG)
+![Imagem Modelo MVC](imagens/mvc.JPG)
 
 Para criar um modelo no Rails podemos usar:
 
@@ -131,7 +131,7 @@ Para criar um modelo no Rails podemos usar:
 $ rails generate model Article title:string body:text
 ```
 
-![Nota para criação do Model](imagens\nota_model.JPG)
+![Nota para criação do Model](imagens/nota_model.JPG)
 
 
 O comando acima alem de criar o model cria também migrations. 
@@ -165,7 +165,7 @@ $ rails db:migrate
 
 O comando exibirá uma saída indicando que a tabela foi criada:
 
-![Saída do comando db:migrate](imagens\saida_migrate.JPG)
+![Saída do comando db:migrate](imagens/saida_migrate.JPG)
 
 Vamos voltar ao nosso controlador app/controllers/articles_controller.rbe alterar a indexação para buscar todos os artigos do banco de dados:
 
@@ -326,7 +326,7 @@ class ArticlesController < ApplicationController
 end
 ```
 
-![Nota para o Criate](imagens\nota_criar.JPG)
+![Nota para o Criate](imagens/nota_criar.JPG)
 
 Vamos criar app/views/articles/new.html.erbcom o seguinte conteúdo:
 
@@ -402,7 +402,7 @@ A primeira validação declara que um valor 'title' deve estar presente. Como ti
 
 A segunda validação declara que um valor 'body' também deve estar presente. Além disso, declara que o valor 'body' deve ter pelo menos 10 caracteres.
 
-![Nota sobre atributos do Model](imagens\nota2_modelo.JPG)
+![Nota sobre atributos do Model](imagens/nota2_modelo.JPG)
 
 Com nossas validações implementadas, vamos modificar app/views/articles/new.html.erb para exibir quaisquer mensagens de erro para title e body:
 
@@ -528,7 +528,7 @@ Vamos atualizar app/views/articles/new.html.erb para usar o parcial via render:
 <%= render "form", article: @article %>
 ```
 
-![Nota Sobre Partial](imagens\nota_partial.JPG)
+![Nota Sobre Partial](imagens/nota_partial.JPG)
 
 E agora, vamos criar um muito semelhante app/views/articles/edit.html.erb:
 
