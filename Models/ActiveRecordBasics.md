@@ -184,3 +184,170 @@ end
 ![Aviso Sobre Mudanças de Nomenclaturas](/imagens/aviso_mudanca_nomenclaturas.JPG)
 
 
+## CRUD: leitura e gravação de dados
+
+CRUD é um acrônimo para os quatro verbos que usamos para operar com dados: C reate, R ead, Update e D elete. O Active Record cria automaticamente métodos para permitir que um aplicativo leia e manipule dados armazenados em suas tabelas.
+
+### Criar (Criate)
+
+Os objetos Active Record podem ser criados a partir de um hash, um bloco ou ter seus atributos definidos manualmente após a criação. O método 'new' retornará um novo objeto enquanto 'create' retornará o objeto e o salvará no banco de dados.
+
+Por exemplo, dado um modelo 'User' com atributos de 'name' e 'occupation', a chamada 'create' do método criará e salvará um novo registro no banco de dados:
+
+```ruby
+user = User.create(name: "David", occupation: "Code Artist")
+```
+
+Usando o método 'new', um objeto pode ser instanciado sem ser salvo:
+
+```ruby
+user = User.new
+user.name = "David"
+user.occupation = "Code Artist"
+```
+
+### Ler (Read)
+
+Active Record fornece uma API rica para acessar dados em um banco de dados. Abaixo estão alguns exemplos de diferentes métodos de acesso a dados fornecidos pelo Active Record.
+
+```ruby
+# return a collection with all users
+users = User.all
+```
+
+```ruby
+# return the first user
+user = User.first
+```
+
+```ruby
+# return the first user named David
+david = User.find_by(name: 'David')
+```
+
+```ruby
+# find all users named David who are Code Artists and sort by created_at in reverse chronological order
+users = User.where(name: 'David', occupation: 'Code Artist').order(created_at: :desc)
+```
+
+### Atualizações (Update)
+
+Depois que um objeto Active Record for recuperado, seus atributos podem ser modificados e salvos no banco de dados.
+
+```ruby
+user = User.find_by(name: 'David')
+user.name = 'Dave'
+user.save
+```
+
+Um atalho para isso é usar nomes de atributos de mapeamento hash para o valor desejado, assim:
+
+```ruby
+user = User.find_by(name: 'David')
+user.update(name: 'Dave')
+```
+
+Isto é mais útil ao atualizar vários atributos de uma só vez.
+
+Se quiser atualizar vários registros em massa sem retornos de chamada ou validações , você pode atualizar o banco de dados diretamente usando update_all:
+
+```ruby
+User.update_all max_login_attempts: 3, must_change_password: true
+```
+
+### Excluir (Delete)
+
+Da mesma forma, uma vez recuperado, um objeto Active Record pode ser destruído, o que o remove do banco de dados.
+
+```ruby
+user = User.find_by(name: 'David')
+user.destroy
+```
+
+Se desejar excluir vários registros em massa, você pode usar o método destroy_by ou :destroy_all
+
+```ruby
+# find and delete all users named David
+User.destroy_by(name: 'David')
+
+# delete all users
+User.destroy_all
+```
+
+## Validações
+
+O Active Record permite validar o estado de um modelo antes que ele seja gravado no banco de dados. Existem vários métodos que você pode usar para verificar seus modelos e validar se um valor de atributo não está vazio, se é único e ainda não está no banco de dados, segue um formato específico e muito mais.
+
+Métodos como 'save' 'create' 'update' validam um modelo antes de persisti lo no banco de dados. Quando um modelo é inválido, esses métodos retornam 'false' e nenhuma operação de banco de dados é executada. Todos esses métodos têm uma 'bang' contraparte (ou seja, 'save!', 'create!' e 'update!'), que são mais rigorosos, pois geram uma execução ActiveRecord::RecordInvalid quando a validação falha. Um exemplo rápido para ilustrar:
+
+```ruby
+class User < ApplicationRecord
+  validates :name, presence: true
+end
+```
+
+```ruby
+irb> user = User.new
+itb> user.save
+=> flase
+irb> user.save!
+=> ActiveRecord::RecordInvalid: Validation failed: Name can´t be blank
+```
+
+## Retornos de chamada (Callbacks)
+
+Os retornos de chamada do Active Record permitem anexar código a determinados eventos no ciclo de vida de seus modelos. Isso permite adicionar comportamento aos seus modelos executando código de forma transparente quando esses eventos ocorrem, como quando você cria um novo registro, atualiza-o, destrói-o e assim por diante.
+
+```ruby
+class User < ApplicationRecord
+  after_create :log_new_user
+
+  private
+    def log_new_user
+      puts "A new user was registered"
+    end
+end
+```
+```ruby
+irb> @user = User.create
+=> A new user was registered
+```
+
+## Migrações (Migrations)
+
+Rails fornece uma maneira conveniente de gerenciar alterações em um esquema de banco de dados por meio de migrações. As migrações são escritas em uma linguagem específica do domínio e armazenadas em arquivos que são executados em qualquer banco de dados compatível com o Active Record.
+
+Aqui está uma migração que cria uma nova tabela chamada 'publications':
+
+```ruby
+class CreatePublications < ActiveRecord::Migration[7.1]
+  def change
+    create_table :publications do |t|
+      t.string :title
+      t.text :description
+      t.references :publication_type
+      t.references :publisher, polymorphic: true
+      t.boolean :single_issue
+
+      t.timestamps
+    end
+  end
+end
+```
+
+Observe que o código acima é independente de banco de dados: ele será executado em 'MySQL', 'PostgreSQL', 'SQLite' e outros.
+
+Rails rastreia quais migrações foram confirmadas no banco de dados e as armazena em uma tabela vizinha no mesmo banco de dados chamada 'schema_migrations'.
+
+Para executar a migração e criar a tabela, você executaria `rails db:migrate`, e para revertê-la e excluir a tabela, `rails db:rollback`.
+
+## Associações (Associations)
+
+As associações do `Active Record` permitem definir relacionamentos entre modelos. As associações podem ser usadas para descrever relacionamentos `um-para-um`, `um-para-muitos` e `muitos-para-muitos`. Por exemplo, um relacionamento como “ O autor tem muitos livros” pode ser definido da seguinte forma:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
