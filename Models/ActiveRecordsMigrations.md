@@ -674,7 +674,7 @@ Essencialmente, este código está revertendo as alterações feitas dentro do b
 A mesma migração também poderia ter sido escrita sem usar, `revert` mas isso envolveria mais algumas etapas:
 
 - Inverta a ordem de `create_table` e `reversible`.
-- Substituir `create_table`com `drop_table`.
+- Substituir `create_table` com `drop_table`.
 - Por fim, substitua `up` por `down` e vice-versa.
 - Tudo isso é resolvido por `revert`.
 
@@ -708,5 +708,248 @@ class DontUseDistributorsViewMigration < ActiveRecord::Migration[7.1]
     end
   end
 end
+```
+
+## Running Migrations
+
+Rails fornece um conjunto de comandos para executar certos conjuntos de migrações.
+
+O primeiro comando rails relacionado à migração que você usará provavelmente será `rails db:migrate`. Na sua forma mais básica ele apenas executa o método `change` ou `up` para todas as migrações que ainda não foram executadas. Se não houver tais migrações, ele sai. Ele executará essas migrações em ordem com base na data da migração.
+
+Observe que a execução do comando `db:migrate` também invoca o comando `db:schema:dump`, que atualizará seu arquivo `db/schema.rb` para corresponder à estrutura do seu banco de dados.
+
+Se você especificar uma versão de destino, o Active Record executará as migrações necessárias (alteração, para cima, para baixo) até atingir a versão especificada. A versão é o prefixo numérico no nome do arquivo da migração. Por exemplo, para migrar para a versão 20080906120000 execute:
+
+```bash
+rails db:migrate VERSION=20080906120000
+```
+
+Se a versão 20080906120000 for maior que a versão atual (ou seja, estiver migrando para cima), isso executará o método `change`(ou `up`) em todas as migrações até 20080906120000 inclusive e não executará nenhuma migração posterior. Se estiver migrando para baixo, isso executará o método `down` em todas as migrações até, mas não incluindo, 20080906120000.
+
+Uma tarefa comum é reverter a última migração. Por exemplo, se você cometeu um erro e deseja corrigi-lo. Em vez de rastrear o número da versão associado à migração anterior, você pode executar:
+
+```bash
+rails db:rollback
+```
+
+Isso reverterá a migração mais recente, revertendo o método `change` ou executando o método `down`. Se precisar desfazer várias migrações você pode fornecer um parâmetro `STEP`:
+
+```bash
+rails db:rollback STEP=3
+```
+
+As últimas 3 migrações serão revertidas.
+
+O comando `db:migrate:redo` é um atalho para fazer uma reversão e depois migrar novamente. Assim como acontece com o comando `db:rollback`, você pode usar o parâmetro `STEP` se precisar voltar mais de uma versão, por exemplo:
+
+```bash
+rails db:migrate:redo STEP=3
+```
+
+Nenhum desses comandos do Rails faz nada que você não possa fazer `db:migrate`. Eles estão lá por conveniência, já que você não precisa especificar explicitamente a versão para a qual migrar.
+
+O comando `bin/rails db:setup` criará o banco de dados, carregará o esquema e o inicializará com os dados iniciais.
+
+O comando `bin/rails db:prepare` é semelhante a `bin/rails db:setup`, mas opera de forma idempotente.
+
+- Se o banco de dados ainda não tiver sido criado, o comando será executado como está `bin/rails db:setup`.
+- Se o banco de dados existir, mas as tabelas não tiverem sido criadas, o comando carregará o esquema, executará quaisquer migrações pendentes, despejará o esquema atualizado e, finalmente, carregará os dados iniciais.
+- Se o banco de dados e as tabelas existirem, mas os dados iniciais não tiverem sido carregados, o comando carregará apenas os dados iniciais.
+- Se o banco de dados, as tabelas e os dados iniciais estiverem todos no lugar, o comando não fará nada.
+
+![Aviso MIgration e Carregamento de Seeds](/imagens/aviso_acitive_record_migration4.JPG)
+
+O comando `bin/rails db:reset` eliminará o banco de dados e o configurará novamente. Isto é funcionalmente equivalente a `bin/rails db:drop db:setup`.
+
+Se você precisar executar uma migração específica para cima ou para baixo, os comandos `db:migrate:up` e `db:migrate:down` farão isso. Basta especificar a versão apropriada e a migração correspondente terá seu método `change`, `up` ou `down` invocado, por exemplo:
+
+```bash
+bin/rails db:migrate:up VERSION=20080906120000
+```
+
+Ao executar este comando o método `change` (ou método `up`) será executado para a migração com a versão "20080906120000".
+
+Primeiro, este comando irá verificar se a migração existe e se já foi realizada e não fará nada nesse caso.
+
+Se a versão especificada não existir, o Rails lançará uma exceção.
+
+
+```bash
+$ rails db:migrate VERSION=zomg
+=>rails aborted!
+=>ActiveRecord::UnknownMigrationVersionError:
+
+=>No migration with version number zomg.
+```
+
+Por padrão, a execução `bin/rails db:migrate` será executada no ambiente development.
+
+Para executar migrações em outro ambiente, você pode especificá-lo usando a variável `RAILS_ENV` de ambiente ao executar o comando. Por exemplo, para executar migrações no ambiente `test`, você pode executar:
+
+```bash
+$ rails db:migrate RAILS_ENV=test
+```
+
+Por padrão, as migrações informam exatamente o que estão fazendo e quanto tempo demoraram. Uma migração criando uma tabela e adicionando um índice pode produzir resultados como este:
+
+![Aviso execução Migração](/imagens/aviso_acitive_record_migration5.JPG)
+
+Vários métodos são fornecidos nas migrações que permitem controlar tudo isso:
+
+|Método |	Propósito|
+| ------ | ------ |
+| `suppress_messages` |	Toma um bloco como argumento e suprime qualquer saída gerada pelo bloco. |
+| `say`	| Pega um argumento de mensagem e o exibe como está. Um segundo argumento booleano pode ser passado para especificar se deve ser recuado ou não.|
+|`say_with_time` |	Produz texto junto com quanto tempo levou para executar seu bloco. Se o bloco retornar um número inteiro, ele assumirá que é o número de linhas afetadas.|
+
+
+Por exemplo, considere a seguinte migração:
+
+```ruby
+class CreateProducts < ActiveRecord::Migration[7.1]
+  def change
+    suppress_messages do
+      create_table :products do |t|
+        t.string :name
+        t.text :description
+        t.timestamps
+      end
+    end
+
+    say "Created a table"
+
+    suppress_messages { add_index :products, :name }
+    say "and an index!", true
+
+    say_with_time 'Waiting for a while' do
+      sleep 10
+      250
+    end
+  end
+end
+```
+
+Isso irá gerar a seguinte saída:
+
+![Aviso geração de migrate](/imagens/aviso_acitive_record_migration6.JPG)
+
+Se você deseja que o Active Record não produza nada, a execução `bin/rails db:migrate
+VERBOSE=false` suprimirá toda a saída.
+
+Ocasionalmente você cometerá um erro ao escrever uma migração. Se você já executou a migração, então você não pode simplesmente editar a migração e executá-la novamente: o Rails pensa que já executou a migração e, portanto, não fará nada quando você executar o `bin/rails db:migrate`. Você deve reverter a migração (por exemplo, com `bin/rails db:rollback`), editar sua migração e, em seguida, executar `bin/rails db:migrate` para executar a versão corrigida.
+
+Em geral, editar as migrações existentes não é uma boa ideia. Você criará trabalho extra para você e seus colegas de trabalho e causará grandes dores de cabeça se a versão existente da migração já tiver sido executada em máquinas de produção.
+
+Em vez disso, você deve escrever uma nova migração que execute as alterações necessárias. Editar uma migração recém-gerada que ainda não foi submetida ao controle de origem (ou, mais geralmente, que não foi propagada além da sua máquina de desenvolvimento) é relativamente inofensiva.
+
+O método `revert` pode ser útil ao escrever uma nova migração para desfazer migrações anteriores, no todo ou em parte.
+
+
+## Schema Dumping and You
+
+As migrações, por mais poderosas que sejam, não são a fonte oficial do esquema do seu banco de dados. Seu banco de dados continua sendo a fonte da verdade.
+
+Por padrão, o Rails gera `db/schema.rb` que tenta capturar o estado atual do esquema do seu banco de dados.
+
+Tende a ser mais rápido e menos propenso a erros criar uma nova instância do banco de dados do seu aplicativo carregando o arquivo de esquema do `bin/rails db:schema:load` que reproduzir todo o histórico de migração. As migrações antigas podem não ser aplicadas corretamente se essas migrações usarem dependências externas variáveis ​​ou dependerem do código do aplicativo que evolui separadamente de suas migrações.
+
+Os arquivos de esquema também são úteis se você quiser ver rapidamente quais atributos um objeto Active Record possui. Essas informações não estão no código do modelo e são frequentemente espalhadas por diversas migrações, mas estão bem resumidas no arquivo de esquema.
+
+
+O formato do dump do esquema gerado pelo Rails é controlado pela configuração `config.active_record.schema_format` definida em `config/application.rb`. Por padrão, o formato é `:ruby` ou, alternativamente, pode ser definido como `:sql`.
+
+Quando `:ruby` é selecionado, o esquema é armazenado no arquivo `db/schema.rb`. Se você olhar este arquivo, verá que ele se parece muito com uma grande migração:
+
+```ruby
+ActiveRecord::Schema[7.1].define(version: 2008_09_06_171750) do
+  create_table "authors", force: true do |t|
+    t.string   "name"
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
+  create_table "products", force: true do |t|
+    t.string   "name"
+    t.text     "description"
+    t.datetime "created_at"
+    t.datetime "updated_at"
+    t.string   "part_number"
+  end
+end
+```
+
+Em muitos aspectos, é exatamente isso que é. Este arquivo é criado inspecionando o banco de dados e expressando sua estrutura usando `create_table`, `add_index` e assim por diante.
+
+No entanto, `db/schema.rb` não é possível expressar tudo o que seu banco de dados pode suportar, como gatilhos, sequências, procedimentos armazenados, etc.
+
+Embora as migrações possam ser usadas `execute` para criar construções de banco de dados que não são suportadas pela DSL de migração Ruby, essas construções podem não ser reconstituídas pelo dumper de esquema.
+
+Se você estiver usando recursos como esses, deverá definir o formato do esquema para `:sql` obterá um arquivo de esquema preciso que seja útil para criar novas instâncias de banco de dados.
+
+Quando o formato do esquema é definido como `:sql`, a estrutura do banco de dados será despejada usando uma ferramenta específica do banco de dados em `db/structure.sql`. Por exemplo, para `PostgreSQL`, o utilitário `pg_dump` é usado. Para `MySQL` e `MariaDB`, este arquivo conterá a saída `SHOW CREATE TABLE` das diversas tabelas.
+
+Para carregar o esquema de `db/structure.sql`, execute `bin/rails db:schema:load`. O carregamento deste arquivo é feito executando as instruções SQL que ele contém. Por definição, isto criará uma cópia perfeita da estrutura do banco de dados.
+
+Como os arquivos de esquema são comumente usados ​​para criar novos bancos de dados, é altamente recomendável que você verifique seu arquivo de esquema no controle de origem.
+
+Conflitos de mesclagem podem ocorrer em seu arquivo de esquema quando duas ramificações modificam o esquema. Para resolver esses conflitos, execute `bin/rails db:migrate` para regenerar o arquivo de esquema.
+
+![Aviso sobre migrações e banco de dados](/imagens/aviso_acitive_record_migration7.JPG)
+
+O método Active Record afirma que a inteligência pertence aos seus modelos, não ao banco de dados. Dessa forma, recursos como gatilhos ou restrições, que empurram parte dessa inteligência de volta para o banco de dados, não são recomendados.
+
+Validações como essa validates `:foreign_key, uniqueness: true` são uma maneira pela qual os modelos podem impor a integridade dos dados. A opção `:dependent` de associações permite que os modelos destruam automaticamente os objetos filhos quando o pai é destruído. Como qualquer coisa que opere no nível da aplicação, estes não podem garantir a integridade referencial e, portanto, algumas pessoas os aumentam com restrições de chave estrangeira no banco de dados.
+
+Embora o Active Record não forneça todas as ferramentas para trabalhar diretamente com tais recursos, o método `execute` pode ser usado para executar SQL arbitrário.
+
+
+##  Migrations and Seed Data
+
+O principal objetivo do recurso de migração do Rails é emitir comandos que modifiquem o esquema usando um processo consistente. As migrações também podem ser usadas para adicionar ou modificar dados. Isto é útil em um banco de dados existente que não pode ser destruído e recriado, como um banco de dados de produção.
+
+
+```ruby
+class AddInitialProducts < ActiveRecord::Migration[7.1]
+  def up
+    5.times do |i|
+      Product.create(name: "Product ##{i}", description: "A product.")
+    end
+  end
+
+  def down
+    Product.delete_all
+  end
+end
+```
+
+Para adicionar dados iniciais após a criação de um banco de dados, Rails possui um recurso integrado de `'sementes'` que acelera o processo. Isto é especialmente útil ao recarregar o banco de dados frequentemente em ambientes de desenvolvimento e teste, ou ao configurar dados iniciais para produção.
+
+Para começar a usar esse recurso, abra `db/seeds.rb` e adicione algum código Ruby e execute `bin/rails db:seed`.
+
+![Aviso sobre seeds](/imagens/aviso_acitive_record_migration8.JPG)
+
+```ruby
+["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
+  MovieGenre.find_or_create_by!(name: genre_name)
+end
+```
+
+Geralmente, essa é uma maneira muito mais limpa de configurar o banco de dados de um aplicativo em branco.
+
+
+## Old Migrations
+
+O `db/schema.rb` ou `db/structure.sql` é um instantâneo do estado atual do seu banco de dados e é a fonte autorizada para reconstruir esse banco de dados. Isso torna possível excluir ou remover arquivos de migração antigos.
+
+Quando você exclui arquivos de migração no `db/migrate/diretório`, qualquer ambiente onde `bin/rails db:migrate` foi executado quando esses arquivos ainda existiam manterá uma referência ao carimbo de data/hora de migração específico para eles dentro de uma tabela interna do banco de dados Rails chamada `schema_migrations`. Esta tabela é usada para controlar se as migrações foram executadas em um ambiente específico.
+
+Se você executar o comando `bin/rails db:migrate:status`, que exibe o status (ativo ou inativo) de cada migração, deverá ser `********** NO FILE **********` exibido ao lado de qualquer arquivo de migração excluído que já foi executado em um ambiente específico, mas não pode mais ser encontrado no `db/migrate/diretório`.
+
+Há uma ressalva, porém, com `Engines` . As tarefas Rake para instalar migrações de mecanismos são idempotentes, o que significa que terão o mesmo resultado, não importa quantas vezes sejam chamadas. As migrações presentes no aplicativo pai devido a uma instalação anterior são ignoradas e as que faltam são copiadas com um novo carimbo de data/hora inicial. Se você excluísse as migrações de mecanismos antigos e executasse a tarefa de instalação novamente, obteria novos arquivos com novos carimbos de data/hora e `db:migrate` tentaria executá-los novamente.
+
+Portanto, geralmente você deseja preservar as migrações provenientes dos mecanismos. Eles têm um comentário especial como este:
+
+```
+# This migration comes from blorgh (originally 20210621082949)
 ```
 
