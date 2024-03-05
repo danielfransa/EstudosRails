@@ -742,3 +742,374 @@ Abordaremos as validações personalizadas mais tarde.
 
 ## Opções comuns de validação
 
+Existem diversas opções comuns suportadas pelos validadores que acabamos de examinar, vamos examinar algumas delas agora!
+
+![Aviso Opções de Validação](/imagens/acitive_record_validations14.JPG)
+
+Ao usar qualquer um dos métodos de validação que acabamos de mencionar, também há uma lista de opções comuns compartilhadas com validadores. Vamos cobrir isso agora!
+
+- `:allow_nil`: Ignora a validação se o atributo for nil.
+- `:allow_blank`: Ignora a validação se o atributo estiver em branco.
+- `:message`: especifique uma mensagem de erro personalizada.
+- `:on`: Especifique os contextos onde esta validação está ativa.
+- `:strict`: gera uma exceção quando a validação falha.
+- `:if` e `:unless` : Especifique quando a validação deve ou não ocorrer.
+
+
+### :allow_nil
+
+A opção `:allow_nil` ignora a validação quando o valor que está sendo validado é nil.
+
+```ruby
+class Coffee < ApplicationRecord
+  validates :size, inclusion: { in: %w(small medium large),
+    message: "%{value} is not a valid size" }, allow_nil: true
+end
+```
+```bash
+irb> Coffee.create(size: nil).valid?
+=> true
+irb> Coffee.create(size: "mega").valid?
+=> false
+```
+
+Para opções completas para o argumento da mensagem, consulte a documentação da mensagem .
+
+### :allow_blank
+
+A opção `:allow_blank` é semelhante à opção `:allow_nil`. Esta opção permitirá que a validação passe se o valor do atributo for `blank?`, como `nil` ou uma string vazia, por exemplo.
+
+```RUBY
+class Topic < ApplicationRecord
+  validates :title, length: { is: 5 }, allow_blank: true
+end
+```
+```bash
+irb> Topic.create(title: "").valid?
+=> true
+irb> Topic.create(title: nil).valid?
+=> true
+```
+
+### :message
+
+Como você já viu, a opção `:message` permite especificar a mensagem que será adicionada à coleção `errors` quando a validação falhar. Quando esta opção não for utilizada, o Active Record utilizará a respectiva mensagem de erro padrão para cada auxiliar de validação.
+
+A opção `:message` aceita a `String` ou `Proc` como valor.
+
+Opcionalmente, um valor `:message` `String`  pode conter qualquer um / todos entre `%{value}`, `%{attribute}` e `%{model}` que será substituído dinamicamente quando a validação falhar. Essa substituição é feita usando a gema i18n, e os espaços reservados devem corresponder exatamente, não são permitidos espaços.
+
+```ruby
+class Person < ApplicationRecord
+  # Hard-coded message
+  validates :name, presence: { message: "must be given please" }
+
+  # Message with dynamic attribute value. %{value} will be replaced
+  # with the actual value of the attribute. %{attribute} and %{model}
+  # are also available.
+  validates :age, numericality: { message: "%{value} seems wrong" }
+end
+```
+
+Um valor `:message` `Proc` recebe dois argumentos: o objeto que está sendo validado e um hash com `:model`, `:attribute` e `:value` pares de valores-chave.
+
+```ruby
+class Person < ApplicationRecord
+  validates :username,
+    uniqueness: {
+      # object = person object being validated
+      # data = { model: "Person", attribute: "Username", value: <username> }
+      message: ->(object, data) do
+        "Hey #{object.name}, #{data[:value]} is already taken."
+      end
+    }
+end
+```
+
+### :on
+
+A opção `:on` permite especificar quando a validação deve acontecer. O comportamento padrão para todos os auxiliares de validação integrados é ser executado ao salvar (tanto ao criar um novo registro quanto ao atualizá-lo). Se quiser alterá-lo, você pode usar `on: :create` para executar a validação somente quando um novo registro for criado ou `on: :update` para executar a validação somente quando um registro for atualizado.
+
+```ruby
+class Person < ApplicationRecord
+  # it will be possible to update email with a duplicated value
+  validates :email, uniqueness: true, on: :create
+
+  # it will be possible to create the record with a non-numerical age
+  validates :age, numericality: true, on: :update
+
+  # the default (validates on both create and update)
+  validates :name, presence: true
+end
+```
+
+Você também pode usar `on:` para definir contextos personalizados. Os contextos personalizados precisam ser acionados explicitamente, passando o nome do contexto para `valid?`, `invalid?` ou `save`.
+
+```ruby
+class Person < ApplicationRecord
+  validates :email, uniqueness: true, on: :account_setup
+  validates :age, numericality: true, on: :account_setup
+end
+```
+
+```bash
+irb> person = Person.new(age: 'thirty-three')
+irb> person.valid?
+=> true
+irb> person.valid?(:account_setup)
+=> false
+irb> person.errors.messages
+=> {:email=>["has already been taken"], :age=>["is not a number"]}
+```
+
+`person.valid?(:account_setup)` executa ambas as validações sem salvar o modelo. `person.save(context: :account_setup)` valida `person` no contexto `account_setup` antes de salvar.
+
+Passar uma série de símbolos também é aceitável.
+
+```ruby
+class Book
+  include ActiveModel::Validations
+
+  validates :title, presence: true, on: [:update, :ensure_title]
+end
+```
+
+```bash
+irb> book = Book.new(title: nil)
+irb> book.valid?
+=> true
+irb> book.valid?(:ensure_title)
+=> false
+irb> book.errors.messages
+=> {:title=>["can't be blank"]}
+```
+
+Quando acionadas por um contexto explícito, as validações são executadas para esse contexto, bem como quaisquer validações sem contexto.
+
+```ruby
+class Person < ApplicationRecord
+  validates :email, uniqueness: true, on: :account_setup
+  validates :age, numericality: true, on: :account_setup
+  validates :name, presence: true
+end
+```
+
+```bash
+irb> person = Person.new
+irb> person.valid?(:account_setup)
+=> false
+irb> person.errors.messages
+=> {:email=>["has already been taken"], :age=>["is not a number"], :name=>["can't be blank"]}
+```
+
+Abordaremos mais casos de uso `on:` no guia de retornos de chamada.
+
+## Validações rigorosas
+
+Você também pode especificar validações para serem rigorosas e aumentar `ActiveModel::StrictValidationFailed` quando o objeto for inválido.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: { strict: true }
+end
+```
+
+```bash
+irb> Person.new.valid?
+ActiveModel::StrictValidationFailed: Name can't be blank
+``` 
+
+Também existe a capacidade de passar uma exceção personalizada para a opção `:strict`.
+
+```ruby
+class Person < ApplicationRecord
+  validates :token, presence: true, uniqueness: true, strict: TokenGenerationException
+end
+```
+
+```bash
+irb> Person.new.valid?
+TokenGenerationException: Token can't be blank
+```
+
+## Validação Condicional
+
+Às vezes fará sentido validar um objeto somente quando um determinado predicado for satisfeito. Você pode fazer isso usando as opções `:if` e `:unless`, que podem receber um símbolo, um Procou um Array. Você pode usar a opção `:if` quando quiser especificar quando a validação deve acontecer. Alternativamente, se quiser especificar quando a validação não deve acontecer, você pode usar a opção `:unless`.
+
+### Usando um símbolo com `:if` e `:unless`
+
+Você pode associar as opções `:if` e `:unless` a um símbolo correspondente ao nome de um método que será chamado logo antes da validação acontecer. Esta é a opção mais comumente usada.
+
+```ruby
+class Order < ApplicationRecord
+  validates :card_number, presence: true, if: :paid_with_card?
+
+  def paid_with_card?
+    payment_type == "card"
+  end
+end
+```
+
+### Usando um `Proc` com `:if` e `:unless`
+
+É possível associar `:if` e `:unless` a um objeto `Proc` que será chamado. Usar um objeto `Proc` permite escrever uma condição embutida em vez de um método separado. Esta opção é mais adequada para one-liners.
+
+
+```ruby
+class Account < ApplicationRecord
+  validates :password, confirmation: true,
+    unless: Proc.new { |a| a.password.blank? }
+end
+```
+
+Como `lambda` é um tipo de `Proc`, também pode ser usado para escrever condições in-line aproveitando a sintaxe abreviada.
+
+```ruby
+validates :password, confirmation: true, unless: -> { password.blank? }
+```
+
+### Agrupando Validações Condicionais
+
+Às vezes é útil ter múltiplas validações usando uma condição. Isso pode ser facilmente alcançado usando `with_options`.
+
+```ruby
+class User < ApplicationRecord
+  with_options if: :is_admin? do |admin|
+    admin.validates :password, length: { minimum: 10 }
+    admin.validates :email, presence: true
+  end
+end
+```
+
+Todas as validações dentro do bloco `with_options` terão passado automaticamente na condição `if: :is_admin?`
+
+### Combinando Condições de Validação
+
+Por outro lado, quando múltiplas condições definem se uma validação deve ou não acontecer, um `Array` pode ser usado. Além disso, você pode aplicar ambos `:if` à `:unless` mesma validação.
+
+```ruby
+class Computer < ApplicationRecord
+  validates :mouse, presence: true,
+                    if: [Proc.new { |c| c.market.retail? }, :desktop?],
+                    unless: Proc.new { |c| c.trackpad.present? }
+end
+```
+
+A validação só é executada quando todas as condições `:if` e nenhuma das condições `:unless` são avaliadas como true.
+
+## Realizando validações personalizadas
+
+Quando os auxiliares de validação integrados não são suficientes para suas necessidades, você pode escrever seus próprios validadores ou métodos de validação conforme preferir.
+
+### Validadores Personalizados
+
+Validadores personalizados são classes que herdam de `ActiveModel::Validator`. Essas classes devem implementar o método `validate` que recebe um registro como argumento e realiza a validação nele. O validador personalizado é chamado usando o método `validates_with`.
+
+```ruby
+class MyValidator < ActiveModel::Validator
+  def validate(record)
+    unless record.name.start_with? 'X'
+      record.errors.add :name, "Provide a name starting with X, please!"
+    end
+  end
+end
+
+class Person < ApplicationRecord
+  validates_with MyValidator
+end
+```
+
+A maneira mais fácil de adicionar validadores personalizados para validar atributos individuais é com o conveniente arquivo `ActiveModel::EachValidator`. Nesse caso, a classe validadora customizada deve implementar um método `validate_each` que recebe três argumentos: registro, atributo e valor. Correspondem à instância, ao atributo a ser validado e ao valor do atributo na instância passada.
+
+```ruby
+class EmailValidator < ActiveModel::EachValidator
+  def validate_each(record, attribute, value)
+    unless URI::MailTo::EMAIL_REGEXP.match?(value)
+      record.errors.add attribute, (options[:message] || "is not an email")
+    end
+  end
+end
+
+class Person < ApplicationRecord
+  validates :email, presence: true, email: true
+end
+```
+
+Conforme mostrado no exemplo, você também pode combinar validações padrão com seus próprios validadores personalizados.
+
+
+### Métodos Personalizados
+
+Você também pode criar métodos que verifiquem o estado dos seus modelos e adicionem erros à coleção `errors` quando eles forem inválidos. Você deve então registrar esses métodos usando o método `validate` de classe, passando os símbolos para os nomes dos métodos de validação.
+
+Você pode passar mais de um símbolo para cada método de classe e as respectivas validações serão executadas na mesma ordem em que foram registradas.
+
+O método `valid?` verificará se a coleção `errors` está vazia, portanto, seus métodos de validação personalizados deverão adicionar erros a ela quando você desejar que a validação falhe:
+
+```ruby
+class Invoice < ApplicationRecord
+  validate :expiration_date_cannot_be_in_the_past,
+    :discount_cannot_be_greater_than_total_value
+
+  def expiration_date_cannot_be_in_the_past
+    if expiration_date.present? && expiration_date < Date.today
+      errors.add(:expiration_date, "can't be in the past")
+    end
+  end
+
+  def discount_cannot_be_greater_than_total_value
+    if discount > total_value
+      errors.add(:discount, "can't be greater than total value")
+    end
+  end
+end
+```
+
+Por padrão, essas validações serão executadas sempre que você chamar `valid?` ou salvar o objeto. Mas também é possível controlar quando executar essas validações personalizadas, dando uma opção `:on` ao método `validate`, com: `:create` ou `:update`.
+
+```ruby
+class Invoice < ApplicationRecord
+  validate :active_customer, on: :create
+
+  def active_customer
+    errors.add(:customer_id, "is not active") unless customer.active?
+  end
+end
+```
+
+Consulte a seção acima para obter mais detalhes sobre `:on`.
+
+### Validadores de listagem
+
+Se você quiser descobrir todos os validadores para um determinado objeto, procure por `validators`.
+
+Por exemplo, se tivermos o seguinte modelo usando um validador personalizado e um validador integrado:
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, on: :create
+  validates :email, format: URI::MailTo::EMAIL_REGEXP
+  validates_with MyOtherValidator, strict: true
+end
+```
+
+Agora podemos utilizar `validators` no modelo “Pessoa” para listar todos os validadores, ou até mesmo verificar um campo específico utilizando `validators_on`.
+
+```bash
+irb> Person.validators
+#=> [#<ActiveRecord::Validations::PresenceValidator:0x10b2f2158
+      @attributes=[:name], @options={:on=>:create}>,
+     #<MyOtherValidatorValidator:0x10b2f17d0
+      @attributes=[:name], @options={:strict=>true}>,
+     #<ActiveModel::Validations::FormatValidator:0x10b2f0f10
+      @attributes=[:email],
+      @options={:with=>URI::MailTo::EMAIL_REGEXP}>]
+     #<MyOtherValidator:0x10b2f0948 @options={:strict=>true}>]
+
+irb> Person.validators_on(:name)
+#=> [#<ActiveModel::Validations::PresenceValidator:0x10b2f2158
+      @attributes=[:name], @options={on: :create}>]
+```
+
+## Trabalhando com Erros de Validação
+
