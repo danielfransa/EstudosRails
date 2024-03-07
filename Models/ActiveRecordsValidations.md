@@ -1113,3 +1113,281 @@ irb> Person.validators_on(:name)
 
 ## Trabalhando com Erros de Validação
 
+Os métodos `valid?` e `invalid?` fornecem apenas um status resumido de validade. No entanto, você pode se aprofundar em cada erro individual usando vários métodos da coleção `errors`.
+
+A seguir está uma lista dos métodos mais comumente usados. Consulte a documentação `ActiveModel::Errors` para obter uma lista de todos os métodos disponíveis.
+
+
+### errors
+
+O gateway através do qual você pode detalhar vários detalhes de cada erro.
+
+Isso retorna uma instância da classe `ActiveModel::Errors` contendo todos os erros, cada erro é representado por um objeto `ActiveModel::Error`.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, length: { minimum: 3 }
+end
+```
+
+```bash
+irb> person = Person.new
+irb> person.valid?
+=> false
+irb> person.errors.full_messages
+=> ["Name can't be blank", "Name is too short (minimum is 3 characters)"]
+
+irb> person = Person.new(name: "John Doe")
+irb> person.valid?
+=> true
+irb> person.errors.full_messages
+=> []
+
+irb> person = Person.new
+irb> person.valid?
+=> false
+irb> person.errors.first.details
+=> {:error=>:too_short, :count=>3}
+```
+
+### errors[]
+
+`errors[]` é usado quando você deseja verificar as mensagens de erro de um atributo específico. Ele retorna uma matriz de strings com todas as mensagens de erro para um determinado atributo, cada string com uma mensagem de erro. Se não houver erros relacionados ao atributo, ele retornará um array vazio.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, length: { minimum: 3 }
+end
+```
+
+```bash
+irb> person = Person.new(name: "John Doe")
+irb> person.valid?
+=> true
+irb> person.errors[:name]
+=> []
+
+irb> person = Person.new(name: "JD")
+irb> person.valid?
+=> false
+irb> person.errors[:name]
+=> ["is too short (minimum is 3 characters)"]
+
+irb> person = Person.new
+irb> person.valid?
+=> false
+irb> person.errors[:name]
+=> ["can't be blank", "is too short (minimum is 3 characters)"]
+```
+
+### errors.where e Objeto de Erro
+
+Às vezes podemos precisar de mais informações sobre cada erro além de sua mensagem. Cada erro é encapsulado como um objeto `ActiveModel::Error` e o método `where` é a forma de acesso mais comum.
+
+`where` retorna uma matriz de objetos de erro filtrados por vários graus de condições.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, length: { minimum: 3 }
+end
+```
+
+Podemos filtrar apenas `attribute` passando-o como o primeiro parâmetro para `errors.where(:attr)`. O segundo parâmetro é usado para filtrar o `type` erro que desejamos ao chamar `errors.where(:attr, :type)`.
+
+```bash
+irb> person = Person.new
+irb> person.valid?
+=> false
+
+irb> person.errors.where(:name)
+=> [ ... ] # all errors for :name attribute
+
+irb> person.errors.where(:name, :too_short)
+=> [ ... ] # :too_short errors for :name attribute
+```
+
+Por último, podemos filtrar por qualquer `options` que possa existir em um determinado tipo de objeto de erro.
+
+```bash
+irb> person = Person.new
+irb> person.valid?
+=> false
+
+irb> person.errors.where(:name, :too_short, minimum: 3)
+=> [ ... ] # all name errors being too short and minimum is 2
+```
+
+Você pode ler diversas informações destes objetos de erro:
+
+```bash
+irb> error = person.errors.where(:name).last
+
+irb> error.attribute
+=> :name
+irb> error.type
+=> :too_short
+irb> error.options[:count]
+=> 3
+```
+
+Você também pode gerar a mensagem de erro:
+
+```bash
+irb> error.message
+=> "is too short (minimum is 3 characters)"
+irb> error.full_message
+=> "Name is too short (minimum is 3 characters)"
+```
+
+O método `full_message` gera uma mensagem mais amigável, com o nome do atributo em letras maiúsculas no início. (Para personalizar o formato que `full_message` utiliza, consulte o guia `I18n` .)
+
+### errors.add
+
+O método `add` cria o objeto de erro usando o hash `attribute` de erro `type` e de opções adicionais. Isto é útil ao escrever seu próprio validador, pois permite definir situações de erro muito específicas.
+
+```ruby
+class Person < ApplicationRecord
+  validate do |person|
+    errors.add :name, :too_plain, message: "is not cool enough"
+  end
+end
+```
+
+```bash
+irb> person = Person.create
+irb> person.errors.where(:name).first.type
+=> :too_plain
+irb> person.errors.where(:name).first.full_message
+=> "Name is not cool enough"
+```
+
+### errors[:base]
+
+Você pode adicionar erros relacionados ao estado do objeto como um todo, em vez de relacionados a um atributo específico. Para fazer isso você deve usar `:base` como atributo ao adicionar um novo erro.
+
+```ruby
+class Person < ApplicationRecord
+  validate do |person|
+    errors.add :base, :invalid, message: "This person is invalid because ..."
+  end
+end
+```
+
+```bash
+irb> person = Person.create
+irb> person.errors.where(:base).first.full_message
+=> "This person is invalid because ..."
+```
+
+```ruby
+class Product < ApplicationRecord
+  validate :check_validity
+
+  private
+
+  def check_validity
+    if some_condition_is_not_met
+      errors.add(:base, "Este produto não atende aos critérios de validade")
+    end
+  end
+end
+```
+
+Neste exemplo, `some_condition_is_not_met` é um método que você definiria para verificar se o produto atende aos critérios de validade desejados. Se essa condição não for atendida, um erro será adicionado à base do objeto `Product` usando `errors.add(:base, "mensagem de erro")`. Isso permitirá que você trate esse erro em nível de objeto, em vez de atribuí-lo a um atributo específico.
+
+### errors.size
+
+O método `size` retorna o número total de erros do objeto.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, length: { minimum: 3 }
+end
+```
+
+```bash
+irb> person = Person.new
+irb> person.valid?
+=> false
+irb> person.errors.size
+=> 2
+
+irb> person = Person.new(name: "Andrea", email: "andrea@example.com")
+irb> person.valid?
+=> true
+irb> person.errors.size
+=> 0
+```
+
+### errors.clear
+
+O método `clear` é usado quando você deseja limpar a coleção `errors` intencionalmente. É claro que chamar um objeto `errors.clear` inválido não o tornará válido: a coleção `errors` agora estará vazia, mas na próxima vez que você chamar `valid?` ou qualquer método que tentar salvar esse objeto no banco de dados, as validações serão executadas novamente. Caso alguma das validações falhe, a coleção `errors` será preenchida novamente.
+
+```ruby
+class Person < ApplicationRecord
+  validates :name, presence: true, length: { minimum: 3 }
+end
+```
+
+```bash
+irb> person = Person.new
+irb> person.valid?
+=> false
+irb> person.errors.empty?
+=> false
+
+irb> person.errors.clear
+irb> person.errors.empty?
+=> true
+
+irb> person.save
+=> false
+
+irb> person.errors.empty?
+=> false
+```
+
+## Exibindo erros de validação em visualizações
+
+Depois de criar um modelo e adicionar validações, se esse modelo for criado por meio de um formulário da web, você provavelmente desejará exibir uma mensagem de erro quando uma das validações falhar.
+
+Como cada aplicação lida com esse tipo de coisa de maneira diferente, o Rails não inclui nenhum view helper para ajudá-lo a gerar essas mensagens diretamente. No entanto, devido ao grande número de métodos que o Rails oferece para interagir com validações em geral, você pode construir o seu próprio. Além disso, ao gerar um scaffold, o Rails colocará algum ERB no `_form.html.erb` que ele gera que exibe a lista completa de erros daquele modelo.
+
+Supondo que temos um modelo que foi salvo em uma variável de instância chamada `@article`, ele ficará assim:
+
+```html
+<% if @article.errors.any? %>
+  <div id="error_explanation">
+    <h2><%= pluralize(@article.errors.count, "error") %> prohibited this article from being saved:</h2>
+
+    <ul>
+      <% @article.errors.each do |error| %>
+        <li><%= error.full_message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+```
+
+Além disso, se você usar os auxiliares de formulário do Rails para gerar seus formulários, quando ocorrer um erro de validação em um campo, será gerado um extra `<div>` em torno da entrada.
+
+```html
+<div class="field_with_errors">
+  <input id="article_title" name="article[title]" size="30" type="text" value="">
+</div>
+```
+
+Você pode então estilizar esse div como desejar. O scaffold padrão que o Rails gera, por exemplo, adiciona esta regra CSS:
+
+```css
+.field_with_errors {
+  padding: 2px;
+  background-color: red;
+  display: table;
+}
+```
+
+Isso significa que qualquer campo com erro termina com uma borda vermelha de 2 pixels.
+
+
+
