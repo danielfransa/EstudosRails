@@ -102,7 +102,7 @@ end
 
 É considerada uma boa prática declarar métodos de retorno de chamada como privados. Se deixados públicos, eles podem ser chamados de fora do modelo e violar o princípio do encapsulamento de objetos.
 
-![Aviso sobre chamadas Callback](/imagens/acitive_record_callbacks1.JPG)
+![Aviso sobre chamadas Callback](/imagens/active_record_callbacks1.JPG)
 
 
 ## retornos de chamada disponíveis
@@ -134,7 +134,7 @@ Aqui está uma lista com todos os retornos de chamada do Active Record disponív
 - `after_save`
 - `after_commit/after_rollback`
 
-![Aviso Callbacks After_save](/imagens/acitive_record_callbacks2.JPG)
+![Aviso Callbacks After_save](/imagens/active_record_callbacks2.JPG)
 
 
 ### Destruindo um Objeto
@@ -144,7 +144,7 @@ Aqui está uma lista com todos os retornos de chamada do Active Record disponív
 - `after_destroy`
 - `after_commit/after_rollback`
 
-![Aviso callback destroy](/imagens/acitive_record_callbacks3.JPG)
+![Aviso callback destroy](/imagens/active_record_callbacks3.JPG)
 
 
 ### after_initialize e after_find
@@ -153,7 +153,7 @@ Sempre que um objeto Active Record for instanciado, `after_initialize` o retorno
 
 Ao carregar um registro do banco de dados o callback `after_find` será chamado. `after_find` é chamado antes `after_initialize` se ambos estiverem definidos.
 
-![Aviso callback after*](/imagens/acitive_record_callbacks4.JPG)
+![Aviso callback after*](/imagens/active_record_callbacks4.JPG)
 
 Eles podem ser registrados da mesma forma que os outros retornos de chamada do Active Record.
 

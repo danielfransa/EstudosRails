@@ -383,11 +383,11 @@ Os modificadores de coluna podem ser aplicados ao criar ou alterar uma coluna:
 
 *`scale`* Especifica a escala das colunas `decimal` e `numeric`, representando o número de dígitos após o ponto `decimal`.
 
-![Aviso sobre index](/imagens/aviso_acitive_record_migration2.JPG)
+![Aviso sobre index](/imagens/aviso_active_record_migration2.JPG)
 
 Alguns adaptadores podem suportar opções adicionais; consulte a documentação da API específica do adaptador para obter mais informações.
 
-![Aviso sobre null e default](/imagens/aviso_acitive_record_migration3.JPG)
+![Aviso sobre null e default](/imagens/aviso_active_record_migration3.JPG)
 
 
 O método `add_reference` permite a criação de uma coluna com nome apropriado atuando como conexão entre uma ou mais associações.
@@ -757,7 +757,7 @@ O comando `bin/rails db:prepare` é semelhante a `bin/rails db:setup`, mas opera
 - Se o banco de dados e as tabelas existirem, mas os dados iniciais não tiverem sido carregados, o comando carregará apenas os dados iniciais.
 - Se o banco de dados, as tabelas e os dados iniciais estiverem todos no lugar, o comando não fará nada.
 
-![Aviso MIgration e Carregamento de Seeds](/imagens/aviso_acitive_record_migration4.JPG)
+![Aviso MIgration e Carregamento de Seeds](/imagens/aviso_active_record_migration4.JPG)
 
 O comando `bin/rails db:reset` eliminará o banco de dados e o configurará novamente. Isto é funcionalmente equivalente a `bin/rails db:drop db:setup`.
 
@@ -792,7 +792,7 @@ $ rails db:migrate RAILS_ENV=test
 
 Por padrão, as migrações informam exatamente o que estão fazendo e quanto tempo demoraram. Uma migração criando uma tabela e adicionando um índice pode produzir resultados como este:
 
-![Aviso execução Migração](/imagens/aviso_acitive_record_migration5.JPG)
+![Aviso execução Migração](/imagens/aviso_active_record_migration5.JPG)
 
 Vários métodos são fornecidos nas migrações que permitem controlar tudo isso:
 
@@ -831,7 +831,7 @@ end
 
 Isso irá gerar a seguinte saída:
 
-![Aviso geração de migrate](/imagens/aviso_acitive_record_migration6.JPG)
+![Aviso geração de migrate](/imagens/aviso_active_record_migration6.JPG)
 
 Se você deseja que o Active Record não produza nada, a execução `bin/rails db:migrate
 VERBOSE=false` suprimirá toda a saída.
@@ -894,7 +894,7 @@ Como os arquivos de esquema são comumente usados ​​para criar novos bancos 
 
 Conflitos de mesclagem podem ocorrer em seu arquivo de esquema quando duas ramificações modificam o esquema. Para resolver esses conflitos, execute `bin/rails db:migrate` para regenerar o arquivo de esquema.
 
-![Aviso sobre migrações e banco de dados](/imagens/aviso_acitive_record_migration7.JPG)
+![Aviso sobre migrações e banco de dados](/imagens/aviso_active_record_migration7.JPG)
 
 O método Active Record afirma que a inteligência pertence aos seus modelos, não ao banco de dados. Dessa forma, recursos como gatilhos ou restrições, que empurram parte dessa inteligência de volta para o banco de dados, não são recomendados.
 
@@ -926,7 +926,7 @@ Para adicionar dados iniciais após a criação de um banco de dados, Rails poss
 
 Para começar a usar esse recurso, abra `db/seeds.rb` e adicione algum código Ruby e execute `bin/rails db:seed`.
 
-![Aviso sobre seeds](/imagens/aviso_acitive_record_migration8.JPG)
+![Aviso sobre seeds](/imagens/aviso_active_record_migration8.JPG)
 
 ```ruby
 ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|

@@ -674,7 +674,7 @@ Rails.application.routes.draw do
 end
 ```
 
-Isso cria um 'comments' recurso aninhado dentro do articles. Esta é outra parte da captura da relação hierárquica que existe entre artigos e comentários. 
+Isso cria um 'comments' recurso aninhado dentro do articles. Esta é outra parte da captura da relação hierárquica que existe entre artigos e comentários.
 
 Vai ficar algo assim:
 

@@ -61,7 +61,7 @@ irb> p.new_record?
 
 Criar e salvar um novo registro enviará uma operação `INSERT` SQL ao banco de dados. A atualização de um registro existente enviará uma operação `UPDATE` SQL. As validações normalmente são executadas antes que esses comandos sejam enviados ao banco de dados. Se alguma validação falhar, o objeto será marcado como inválido e o Active Record não executará a operação `INSERT` ou `UPDATE`. Isso evita armazenar um objeto inválido no banco de dados. Você pode optar por executar validações específicas quando um objeto é criado, salvo ou atualizado.
 
-![Aviso sobre validação](/imagens/acitive_record_validations1.JPG)
+![Aviso sobre validação](/imagens/active_record_validations1.JPG)
 
 Os métodos a seguir acionam validações e salvarão o objeto no banco de dados somente se o objeto for válido:
 
@@ -186,7 +186,7 @@ Cada auxiliar aceita um número arbitrário de nomes de atributos, portanto, com
 
 Todos aceitam as opções `:on` e `:message`, que definem quando a validação deve ser executada e qual mensagem deve ser adicionada à errors coleção caso ela falhe, respectivamente. A opção `:on` assume um dos valores `:create` ou `:update`. Há uma mensagem de erro padrão para cada um dos auxiliares de validação. Essas mensagens são usadas quando a opção `:message` não é especificada. Vamos dar uma olhada em cada um dos ajudantes disponíveis.
 
-![Aviso validations Helpers](/imagens/acitive_record_validations2.JPG)
+![Aviso validations Helpers](/imagens/active_record_validations2.JPG)
 
 ### acceptance
 
@@ -235,7 +235,7 @@ No seu modelo de visualização você poderia usar algo como
 <%= text_field :person, :email_confirmation %>
 ```
 
-![Aviso sobre a validação confirmation](/imagens/acitive_record_validations3.JPG)
+![Aviso sobre a validação confirmation](/imagens/active_record_validations3.JPG)
 
 ```ruby
 class Person < ApplicationRecord
@@ -339,7 +339,7 @@ class Booking < ApplicationRecord
 end
 ```
 
-![Aviso sobre validate comparison](/imagens/acitive_record_validations4.JPG)
+![Aviso sobre validate comparison](/imagens/active_record_validations4.JPG)
 
 
 ### format
@@ -377,7 +377,7 @@ class User < ApplicationRecord
 end
 ```
 
-![Aviso sobre Format](/imagens/acitive_record_validations5.JPG)
+![Aviso sobre Format](/imagens/active_record_validations5.JPG)
 
 
 ### inclusion
@@ -446,7 +446,7 @@ end
 
 Observe que as mensagens de erro padrão são plurais (por exemplo, "é muito curto (o mínimo é `%{count}` caracteres)"). Por esse motivo, quando `:minimum` for 1 você deve fornecer uma mensagem personalizada ou usar `presence: true`. Quando `:in` ou `:within` tiver um limite inferior de 1, você deverá fornecer uma mensagem personalizada ou usar presence antes de length.
 
-![Aviso validation length](/imagens/acitive_record_validations6.JPG)
+![Aviso validation length](/imagens/active_record_validations6.JPG)
 
 
 ### numericality
@@ -472,7 +472,7 @@ A mensagem de erro padrão `:only_integer` é: "deve ser um número inteiro" .
 
 Além disso `:only_integer`, este auxiliar também aceita a opção `:only_numeric` que especifica que o valor deve ser uma instância de `Numeric` e tenta analisar o valor se for um String.
 
-![Aviso validate mumericality](/imagens/acitive_record_validations7.JPG)
+![Aviso validate mumericality](/imagens/active_record_validations7.JPG)
 
 A mensagem de erro padrão quando nenhuma opção é especificada é: "is not a number" .
 
@@ -515,7 +515,7 @@ class Order < ApplicationRecord
   has_many :line_items, inverse_of: :order
 end
 ```
-![aviso sobre validate associação](/imagens/acitive_record_validations8.JPG)
+![aviso sobre validate associação](/imagens/active_record_validations8.JPG)
 
 Se você validar a presença de um objeto associado por meio de um relacionamento `has_one` ou `has_many`, ele verificará se o objeto não é `blank?` nem `marked_for_destruction?`.
 
@@ -560,7 +560,7 @@ class Order < ApplicationRecord
 end
 ```
 
-![aviso sobre validate associação](/imagens/acitive_record_validations8.JPG)
+![aviso sobre validate associação](/imagens/active_record_validations8.JPG)
 
 Se você validar a ausência de um objeto associado por meio de um relacionamento `has_one` ou `has_many`, ele verificará se o objeto não é `present?` nem `marked_for_destruction?`.
 
@@ -591,7 +591,7 @@ class Holiday < ApplicationRecord
 end
 ```
 
-![Aviso validate uniqueness](/imagens/acitive_record_validations9.JPG)
+![Aviso validate uniqueness](/imagens/active_record_validations9.JPG)
 
 Para adicionar uma restrição de exclusividade ao seu banco de dados, use a instrução `add_index` em uma migração e inclua a opção `unique: true`.
 
@@ -605,7 +605,7 @@ class Person < ApplicationRecord
 end
 ```
 
-![Aviso validate uniqueness banco de dados](/imagens/acitive_record_validations10.JPG)
+![Aviso validate uniqueness banco de dados](/imagens/active_record_validations10.JPG)
 
 Existe uma opção `:conditions` que permite especificar condições adicionais como um fragmento `WHERE SQL` para limitar a pesquisa de restrição de exclusividade (por exemplo `conditions: -> { where(status: 'active') }`, ).
 
@@ -627,11 +627,11 @@ end
 
 Esta validação funcionará com todos os tipos de associação.
 
-![Aviso validate validates_associated](/imagens/acitive_record_validations11.JPG)
+![Aviso validate validates_associated](/imagens/active_record_validations11.JPG)
 
 A mensagem de erro padrão `validates_associated` é: "is invalid". Observe que cada objeto associado conterá sua própria coleção `errors`; os erros não chegam ao modelo de chamada.
 
-![Aviso validate validates_associated2](/imagens/acitive_record_validations12.JPG)
+![Aviso validate validates_associated2](/imagens/active_record_validations12.JPG)
 
 
 ### validates_each
@@ -673,7 +673,7 @@ end
 
 Não há mensagem de erro padrão para validates_with. Você deve adicionar erros manualmente à coleção de erros do registro na classe do validador.
 
-![aviso validate validates_with](/imagens/acitive_record_validations13.JPG)
+![aviso validate validates_with](/imagens/active_record_validations13.JPG)
 
 Para implementar o método de validação, você deve aceitar um parâmetro `record` na definição do método, que é o registro a ser validado.
 
@@ -744,7 +744,7 @@ Abordaremos as validações personalizadas mais tarde.
 
 Existem diversas opções comuns suportadas pelos validadores que acabamos de examinar, vamos examinar algumas delas agora!
 
-![Aviso Opções de Validação](/imagens/acitive_record_validations14.JPG)
+![Aviso Opções de Validação](/imagens/active_record_validations14.JPG)
 
 Ao usar qualquer um dos métodos de validação que acabamos de mencionar, também há uma lista de opções comuns compartilhadas com validadores. Vamos cobrir isso agora!
 
