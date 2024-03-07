@@ -234,3 +234,245 @@ Book/Library was touched
 
 ## Retornos de chamada em execução
 
+Os seguintes métodos acionam retornos de chamada:
+
+- `create`
+- `create!`
+- `destroy`
+- `destroy!`
+- `destroy_all`
+- `destroy_by`
+- `save`
+- `save!`
+- `save(validate: false)`
+- `save!(validate: false)`
+- `toggle!`
+- `touch`
+- `update_attribute`
+- `update`
+- `update!`
+- `valid?`
+
+Além disso, o retorno `after_find` de chamada é acionado pelos seguintes métodos de localização:
+
+- `all`
+- `first`
+- `find`
+- `find_by`
+- `find_by_*`
+- `find_by_*!`
+- `find_by_sql`
+- `last`
+
+O retorno `after_initialize` de chamada é acionado sempre que um novo objeto da classe é inicializado.
+
+![Aviso Active Record Calback](/imagens/active_record_callbacks5.JPG)
+
+##  Ignorando retornos de chamada
+
+Assim como nas validações, também é possível pular retornos de chamada usando os seguintes métodos:
+
+- `decrement!`
+- `decrement_counter`
+- `delete`
+- `delete_all`
+- `delete_by`
+- `increment!`
+- `increment_counter`
+- `insert`
+- `insert!`
+- `insert_all`
+- `insert_all!`
+- `touch_all`
+- `update_column`
+- `update_columns`
+- `update_all`
+- `update_counters`
+- `upsert`
+- `upsert_all`
+
+Entretanto, esses métodos devem ser usados ​​com cautela, pois importantes regras de negócios e lógica de aplicação podem ser mantidas em retornos de chamada. Ignorá-los sem compreender as implicações potenciais pode levar a dados inválidos.
+
+
+## Parando a Execução
+
+À medida que você começa a registrar novos retornos de chamada para seus modelos, eles serão colocados na fila para execução. Esta fila incluirá todas as validações do seu modelo, os callbacks registrados e a operação do banco de dados a ser executada.
+
+Toda a cadeia de retorno de chamada está envolvida em uma transação. Se algum retorno de chamada gerar uma exceção, a cadeia de execução será interrompida e um ROLLBACK será emitido. Para interromper intencionalmente o uso de uma corrente:
+
+```ruby
+throw :abort
+```
+
+![Aviso Active Record Callback interrupções](/imagens/active_record_callbacks6.JPG)
+
+
+## Retornos de chamada relacionais
+
+Os retornos de chamada funcionam por meio de relacionamentos de modelo e podem até ser definidos por eles. Suponha um exemplo em que um usuário tenha muitos artigos. Os artigos de um usuário devem ser destruídos se o usuário for destruído. Vamos adicionar um retorno `after_destroy` de chamada ao modelo `User` por meio de seu relacionamento com o modelo `Article`:
+
+```ruby
+class User < ApplicationRecord
+  has_many :articles, dependent: :destroy
+end
+
+class Article < ApplicationRecord
+  after_destroy :log_destroy_action
+
+  def log_destroy_action
+    puts 'Article destroyed'
+  end
+end
+```
+
+```bash
+irb> user = User.first
+=> #<User id: 1>
+irb> user.articles.create!
+=> #<Article id: 1, user_id: 1>
+irb> user.destroy
+Article destroyed
+=> #<User id: 1>
+```
+
+
+## Retornos de chamada de associação
+
+Os retornos de chamada de associação são semelhantes aos retornos de chamada normais, mas são acionados por eventos no ciclo de vida de uma coleção. Existem quatro retornos de chamada de associação disponíveis:
+
+- `before_add`
+- `after_add`
+- `before_remove`
+- `after_remove`
+
+Você define retornos de chamada de associação adicionando opções à declaração de associação. Por exemplo:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, before_add: :check_credit_limit
+
+  def check_credit_limit(book)
+    # ...
+  end
+end
+```
+
+Rails passa o objeto que está sendo adicionado ou removido para o retorno de chamada.
+
+Você pode empilhar retornos de chamada em um único evento, passando-os como um array:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books,
+    before_add: [:check_credit_limit, :calculate_shipping_charges]
+
+  def check_credit_limit(book)
+    # ...
+  end
+
+  def calculate_shipping_charges(book)
+    # ...
+  end
+end
+```
+
+Se um retorno `before_add` de chamada for lançado `:abort`, o objeto não será adicionado à coleção. Da mesma forma, se um retorno `before_remove` de chamada for lançado `:abort`, o objeto não será removido da coleção:
+
+```ruby
+# book won't be added if the limit has been reached
+def check_credit_limit(book)
+  throw(:abort) if limit_reached?
+end
+```
+
+![Aviso Active Record Callback](/imagens/active_record_callbacks7.JPG)
+
+```ruby
+# Triggers `before_add` callback
+author.books << book
+author.books = [book, book2]
+
+# Does not trigger the `before_add` callback
+book.update(author_id: 1)
+```
+
+
+## Retornos de chamada condicionais
+
+Assim como acontece com as validações, também podemos condicionar a chamada de um método de retorno de chamada à satisfação de um determinado predicado. Podemos fazer isso usando as opções `:if` e `:unless`, que podem receber um `símbolo`, uma `Proc` ou um `Array`.
+
+Você pode usar a opção `:if` quando quiser especificar sob quais condições o retorno de chamada deve ser chamado. Se quiser especificar as condições sob as quais o retorno de chamada não deve ser chamado, você pode usar a opção `:unless`.
+
+
+### Usando `:if` e `:unless` com um `Symbol`
+
+Você pode associar as opções `:if` e `:unless` a um símbolo correspondente ao nome de um método predicado que será chamado logo antes do retorno de chamada.
+
+Ao usar a opção `:if`, o retorno de chamada **não** será executado se o método predicado retornar **false**; ao usar a opção `:unless`, o retorno de chamada **não** será executado se o método predicado retornar **true** . Esta é a opção mais comum.
+
+```ruby
+class Order < ApplicationRecord
+  before_save :normalize_card_number, if: :paid_with_card?
+end
+```
+
+Utilizando esta forma de cadastro também é possível cadastrar diversos predicados diferentes que devem ser chamados para verificar se o callback deve ser executado. Abordaremos isso abaixo .
+
+
+### Usando `:if` e `:unless` com um Proc
+
+É possível associar `:if` e `:unless`a um objeto `Proc`. Esta opção é mais adequada ao escrever métodos de validação curtos, geralmente de uma linha:
+
+```ruby
+class Order < ApplicationRecord
+  before_save :normalize_card_number,
+    if: Proc.new { |order| order.paid_with_card? }
+end
+```
+
+Como o proc é avaliado no contexto do objeto, também é possível escrever isso como:
+
+```ruby
+class Order < ApplicationRecord
+  before_save :normalize_card_number, if: Proc.new { paid_with_card? }
+end
+```
+
+
+### Múltiplas Condições de Retorno de Chamada
+
+As opções `:if` e `:unless` também aceitam uma matriz de procs ou nomes de métodos como símbolos:
+
+```ruby
+class Comment < ApplicationRecord
+  before_save :filter_content,
+    if: [:subject_to_parental_control?, :untrusted_author?]
+end
+```
+
+Você pode incluir facilmente um proc na lista de condições:
+
+```ruby
+class Comment < ApplicationRecord
+  before_save :filter_content,
+    if: [:subject_to_parental_control?, Proc.new { untrusted_author? }]
+end
+```
+
+### Usando ambos `:if` e `:unless`
+
+Os retornos de chamada podem misturar ambos `:if` e `:unless` na mesma declaração:
+
+```ruby
+class Comment < ApplicationRecord
+  before_save :filter_content,
+    if: Proc.new { forum.parental_control? },
+    unless: Proc.new { author.trusted? }
+end
+```
+
+O retorno de chamada só é executado quando todas as condições `:if` e nenhuma delas `:unless` são avaliadas como true.
+
+
+## Aulas de retorno de chamada
+
