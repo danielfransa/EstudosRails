@@ -474,5 +474,169 @@ end
 O retorno de chamada só é executado quando todas as condições `:if` e nenhuma delas `:unless` são avaliadas como true.
 
 
-## Aulas de retorno de chamada
+## Classes de retorno de chamada
+
+Às vezes, os métodos de retorno de chamada que você escreverá serão úteis o suficiente para serem reutilizados por outros modelos. O Active Record possibilita a criação de classes que encapsulam os métodos de callback, para que possam ser reutilizados.
+
+Aqui está um exemplo onde criamos uma classe com callback `after_destroy` para lidar com a limpeza de arquivos descartados no sistema de arquivos. Esse comportamento pode não ser exclusivo do nosso modelo `PictureFile` e podemos querer compartilhá-lo, então é uma boa ideia encapsular isso em uma classe separada. Isso tornará muito mais fácil testar esse comportamento e alterá-lo.
+
+```ruby
+class FileDestroyerCallback
+  def after_destroy(file)
+    if File.exist?(file.filepath)
+      File.delete(file.filepath)
+    end
+  end
+end
+```
+
+Quando declarados dentro de uma classe, como acima, os métodos de callback receberão o objeto modelo como parâmetro. Isso funcionará em qualquer modelo que use a classe assim:
+
+```ruby
+class PictureFile < ApplicationRecord
+  after_destroy FileDestroyerCallback.new
+end
+```
+
+Observe que precisávamos instanciar um novo objeto `FileDestroyerCallback`, pois declaramos nosso callback como um método de instância. Isto é particularmente útil se os retornos de chamada fizerem uso do estado do objeto instanciado. Muitas vezes, porém, fará mais sentido declarar os retornos de chamada como métodos de classe:
+
+```ruby
+class FileDestroyerCallback
+  def self.after_destroy(file)
+    if File.exist?(file.filepath)
+      File.delete(file.filepath)
+    end
+  end
+end
+```
+
+Quando o método callback for declarado desta forma, não será necessário instanciar um novo objeto `FileDestroyerCallback` em nosso modelo.
+
+```ruby
+class PictureFile < ApplicationRecord
+  after_destroy FileDestroyerCallback
+end
+```
+
+Você pode declarar quantos retornos de chamada quiser dentro de suas classes de retorno de chamada.
+
+
+## Retornos de chamada de transação
+
+###  `after_commit` e `after_rollback`
+
+Existem dois retornos de chamada adicionais que são acionados pela conclusão de uma transação de banco de dados: `after_commit` e `after_rollback`. Esses retornos de chamada são muito semelhantes ao retorno de chamada `after_save`, exceto que eles não são executados até que as alterações do banco de dados tenham sido confirmadas ou revertidas. Eles são mais úteis quando seus modelos do Active Record precisam interagir com sistemas externos que não fazem parte da transação do banco de dados.
+
+Considere, por exemplo, o exemplo anterior onde o modelo `PictureFile` precisa excluir um arquivo após a destruição do registro correspondente. Se alguma coisa gerar uma exceção após o retorno de chamada `after_destroy` ser chamado e a transação ser revertida, o arquivo terá sido excluído e o modelo ficará em um estado inconsistente. Por exemplo, suponha que `picture_file_2` o código abaixo não seja válido e o método `save!` gere um erro.
+
+```ruby
+PictureFile.transaction do
+  picture_file_1.destroy
+  picture_file_2.save!
+end
+```
+
+Usando o retorno de chamada `after_commit`, podemos explicar este caso.
+
+```ruby
+class PictureFile < ApplicationRecord
+  after_commit :delete_picture_file_from_disk, on: :destroy
+
+  def delete_picture_file_from_disk
+    if File.exist?(filepath)
+      File.delete(filepath)
+    end
+  end
+end
+```
+
+![Aviso Active Record Callback - after_commit e after_rollback](/imagens/active_record_callbacks8.JPG)
+
+
+### Aliases para `after_commit`
+
+Como é comum usar o retorno de chamada `after_commit` apenas em criar, atualizar ou excluir, existem aliases para essas operações:
+
+- `after_create_commit`
+- `after_update_commit`
+- `after_destroy_commit`
+
+```ruby
+class PictureFile < ApplicationRecord
+  after_destroy_commit :delete_picture_file_from_disk
+
+  def delete_picture_file_from_disk
+    if File.exist?(filepath)
+      File.delete(filepath)
+    end
+  end
+end
+```
+
+![Avico Active Record Callback - after_commit](/imagens/active_record_callbacks9.JPG)
+
+```ruby
+class User < ApplicationRecord
+  after_create_commit :log_user_saved_to_db
+  after_update_commit :log_user_saved_to_db
+
+  private
+    def log_user_saved_to_db
+      puts 'User was saved to database'
+    end
+end
+```
+
+```bash
+irb> @user = User.create # prints nothing
+
+irb> @user.save # updating @user
+User was saved to database
+```
+
+
+### after_save_commit
+
+Há também `after_save_commit`, que é um alias para usar o retorno de chamada `after_commit` para criar e atualizar juntos:
+
+```ruby
+class User < ApplicationRecord
+  after_save_commit :log_user_saved_to_db
+
+  private
+    def log_user_saved_to_db
+      puts 'User was saved to database'
+    end
+end
+```
+
+```bash
+irb> @user = User.create # creating a User
+User was saved to database
+
+irb> @user.save # updating @user
+User was saved to database
+```
+
+
+### Pedido de retorno de chamada transacional
+
+Por padrão, os retornos de chamada serão executados na ordem em que são definidos. No entanto, ao definir vários retornos de chamada transacionais `after_` ( `after_commit`, `after_rollback`, etc), a ordem pode ser invertida a partir do momento em que foram definidos.
+
+```ruby
+class User < ActiveRecord::Base
+  after_commit { puts("this actually gets called second") }
+  after_commit { puts("this actually gets called first") }
+end
+```
+
+![Aviso Active Record Callback - after_*](/imagens/active_record_callbacks10.JPG)
+
+Esta ordem pode ser definida através da configuração:
+
+```ruby
+config.active_record.run_after_transaction_callbacks_in_order_defined = false
+```
+
+Quando definido como `true` (o padrão do Rails 7.1), os retornos de chamada são executados na ordem em que são definidos. Quando definido como false, a ordem é invertida, assim como no exemplo acima.
 
