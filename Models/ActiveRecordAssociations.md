@@ -1632,4 +1632,265 @@ Se você definir a opção `:validate` como `true`, então novos objetos associa
 
 #### Escopos para `has_one`
 
+Pode haver momentos em que você deseja personalizar a consulta usada pelo `has_one`. Essas personalizações podem ser obtidas por meio de um bloco de escopo. Por exemplo:
 
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, -> { where active: true }
+end
+```
+
+Você pode usar qualquer um dos métodos de consulta padrão dentro do bloco de escopo. Os seguintes são discutidos abaixo:
+
+- `where`
+- `includes`
+- `readonly`
+- `select`
+
+
+
+##### where
+
+O método `where` permite especificar as condições que o objeto associado deve atender.
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, -> { where "confirmed = 1" }
+end
+```
+
+
+##### includes
+
+Você pode usar o método `includes` para especificar associações de segunda ordem que devem ser carregadas antecipadamente quando essa associação for usada. Por exemplo, considere estes modelos:
+
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account
+end
+
+class Account < ApplicationRecord
+  belongs_to :supplier
+  belongs_to :representative
+end
+
+class Representative < ApplicationRecord
+  has_many :accounts
+end
+```
+
+Se você frequentemente recupera representantes diretamente dos fornecedores (`@supplier.account.representative`), então você pode tornar seu código um pouco mais eficiente incluindo representantes na associação de fornecedores para contas:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, -> { includes :representative }
+end
+
+class Account < ApplicationRecord
+  belongs_to :supplier
+  belongs_to :representative
+end
+
+class Representative < ApplicationRecord
+  has_many :accounts
+end
+```
+
+
+##### readonly
+
+Se você usar o método `readonly`, o objeto associado será somente leitura quando recuperado por meio da associação.
+
+
+##### select
+
+O método `select` permite substituir a cláusula `SELECT` SQL usada para recuperar dados sobre o objeto associado. Por padrão, o Rails recupera todas as colunas.
+
+
+#### Existe algum objeto associado?
+
+Você pode ver se existe algum objeto associado usando o método `association.nil?`:
+
+```ruby
+if @supplier.account.nil?
+  @msg = "No account found for this supplier"
+end
+```
+
+
+####  Quando os objetos são salvos?
+
+Quando você atribui um objeto a uma associação `has_one`, esse objeto é salvo automaticamente (para atualizar sua chave estrangeira). Além disso, qualquer objeto substituído também é salvo automaticamente, pois sua chave estrangeira também será alterada.
+
+Se algum desses salvamentos falhar devido a erros de validação, a instrução de atribuição retornará `false` e a atribuição em si será cancelada.
+
+Se o objeto pai (aquele que declara a associação `has_one`) não for salvo (ou seja, `new_record?` retornar `true`), os objetos filhos não serão salvos. Eles serão automaticamente quando o objeto pai for salvo.
+
+Se você deseja atribuir um objeto a uma associação `has_one` sem salvar o objeto, use o método `build_association`.
+
+
+###  Referência de Associação `has_many`
+
+A associação `has_many` cria um relacionamento um-para-muitos com outro modelo. Em termos de banco de dados, esta associação diz que a outra classe terá uma chave estrangeira que se refere a instâncias desta classe.
+
+#### Métodos Adicionados por `has_many`
+
+Ao declarar uma associação `has_many`, a classe declarante ganha automaticamente 17 métodos relacionados à associação:
+
+- `collection`
+- `collection<<(object, ...)`
+- `collection.delete(object, ...)`
+- `collection.destroy(object, ...)`
+- `collection=(objects)`
+- `collection_singular_ids`
+- `collection_singular_ids=(ids)`
+- `collection.clear`
+- `collection.empty?`
+- `collection.size`
+- `collection.find(...)`
+- `collection.where(...)`
+- `collection.exists?(...)`
+- `collection.build(attributes = {})`
+- `collection.create(attributes = {})`
+- `collection.create!(attributes = {})`
+- `collection.reload`
+
+Em todos esses métodos, `collection` é substituído pelo símbolo passado como primeiro argumento para `has_many` e `collection_singular` é substituído pela versão singularizada desse símbolo. Por exemplo, dada a declaração:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+Cada instância do modelo `Author` terá estes métodos:
+
+```bash
+books
+books<<(object, ...)
+books.delete(object, ...)
+books.destroy(object, ...)
+books=(objects)
+book_ids
+book_ids=(ids)
+books.clear
+books.empty?
+books.size
+books.find(...)
+books.where(...)
+books.exists?(...)
+books.build(attributes = {}, ...)
+books.create(attributes = {})
+books.create!(attributes = {})
+books.reload
+```
+
+
+##### collection
+
+O método collection retorna uma relação de todos os objetos associados. Se não houver objetos associados, retorna uma Relação vazia.
+
+```ruby
+@books = @author.books
+``` 
+
+
+##### collection<<(object, ...)
+O método `collection<<` adiciona um ou mais objetos à coleção definindo suas chaves estrangeiras como a chave primária do modelo de chamada.
+
+```ruby
+@author.books << @book1
+```
+
+
+
+##### collection.delete(object, ...)
+O método `collection.delete` remove um ou mais objetos da coleção definindo suas chaves estrangeiras como `NULL`.
+
+```ruby
+@author.books.delete(@book1)
+```
+
+![Aviso Active Record Associations - has_many - delete](/imagens/active_record_associations21.JPG)
+
+
+
+##### collection.destroy(object, ...)
+
+O método `collection.destroy` remove um ou mais objetos da coleção executando `destroy` em cada objeto.
+
+```ruby
+@author.books.destroy(@book1)
+```
+
+![Aviso Active Record Associations - has_many - destroy](/imagens/active_record_associations22.JPG)
+
+
+##### collection=(objects)
+
+O método `collection=` faz com que a coleção contenha apenas os objetos fornecidos, adicionando e excluindo conforme apropriado. As alterações são persistidas no banco de dados.
+
+
+##### collection_singular_ids
+
+O método `collection_singular_ids` retorna um array dos ids dos objetos da coleção.
+
+```ruby
+@book_ids = @author.book_ids
+```
+
+
+##### collection_singular_ids=(ids)
+O método `collection_singular_ids=` faz com que a coleção contenha apenas os objetos identificados pelos valores de chave primária fornecidos, adicionando e excluindo conforme apropriado. As alterações são persistidas no banco de dados.
+
+
+
+##### collection.clear
+O método `collection.clear` remove todos os objetos da coleção de acordo com a estratégia especificada pela opção `dependent`. Se nenhuma opção for dada, segue a estratégia padrão. A estratégia padrão para associações `has_many :through` é `delete_all`, e para associações `has_many` é definir as chaves estrangeiras como `NULL`.
+
+```ruby
+@author.books.clear
+```
+
+![Active Record Associations has_many - collection.clear](/imagens/active_record_associations23.JPG)
+
+
+
+##### collection.empty?
+
+O método `collection.empty?` retorna `true` se a coleção não contiver nenhum objeto associado.
+
+```ruby
+<% if @author.books.empty? %>
+  No Books Found
+<% end %>
+```
+
+
+##### collection.size
+
+O método `collection.size` retorna o número de objetos na coleção.
+
+```ruby
+@book_count = @author.books.size
+```
+
+
+##### collection.find(...)
+
+O método `collection.find` encontra objetos na tabela da coleção.
+
+```ruby
+@available_book = @author.books.find(1)
+```
+
+##### collection.where(...)
+O método `collection.where` encontra objetos dentro da coleção com base nas condições fornecidas, mas os objetos são carregados lentamente, o que significa que o banco de dados é consultado apenas quando o(s) objeto(s) são acessados.
+
+```ruby
+@available_books = @author.books.where(available: true) # No query yet
+@available_book = @available_books.first # Now the database will be queried
+```
+
+###### collection.exists?(...)
