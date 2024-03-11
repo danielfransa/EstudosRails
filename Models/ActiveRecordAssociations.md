@@ -744,3 +744,892 @@ end
 ```
 
 ### Escopo da Associação de Controle
+
+Por padrão, as associações procuram objetos apenas dentro do escopo do módulo atual. Isso pode ser importante quando você declara modelos Active Record dentro de um módulo. Por exemplo:
+
+```ruby
+module MyApplication
+  module Business
+    class Supplier < ApplicationRecord
+      has_one :account
+    end
+
+    class Account < ApplicationRecord
+      belongs_to :supplier
+    end
+  end
+end
+```
+
+Isso funcionará bem, porque tanto a classe `Supplier` quanto a classe `Account` são definidas no mesmo escopo. Mas o seguinte não funcionará, porque `Supplier` e `Account` são definidos em escopos diferentes:
+
+```ruby
+module MyApplication
+  module Business
+    class Supplier < ApplicationRecord
+      has_one :account
+    end
+  end
+
+  module Billing
+    class Account < ApplicationRecord
+      belongs_to :supplier
+    end
+  end
+end
+```
+
+Para associar um modelo a um modelo em um namespace diferente, você deve especificar o nome completo da classe em sua declaração de associação:
+
+```ruby
+module MyApplication
+  module Business
+    class Supplier < ApplicationRecord
+      has_one :account,
+        class_name: "MyApplication::Billing::Account"
+    end
+  end
+
+  module Billing
+    class Account < ApplicationRecord
+      belongs_to :supplier,
+        class_name: "MyApplication::Business::Supplier"
+    end
+  end
+end
+```
+
+
+### Associações bidirecionais
+
+É normal que as associações funcionem em duas direções, sendo necessária a declaração em dois modelos diferentes:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+end
+
+class Book < ApplicationRecord
+  belongs_to :author
+end
+```
+
+O Active Record tentará identificar automaticamente que esses dois modelos compartilham uma associação bidirecional com base no nome da associação. Esta informação permite que o Active Record:
+
+  - Evite consultas desnecessárias para dados já carregados:
+    ```bash
+    irb> author = Author.first
+    irb> author.books.all? do |book|
+    irb>   book.author.equal?(author) # No additional queries executed here
+    irb> end
+    => true
+    ```
+
+  - Evite dados inconsistentes (já que há apenas uma cópia do objeto `Author` carregada):
+    ```bash
+    irb> author = Author.first
+    irb> book = author.books.first
+    irb> author.name == book.author.name
+    => true
+    irb> author.name = "Changed Name"
+    irb> author.name == book.author.name
+    => true
+    ```
+
+  - Associações de salvamento automático em mais casos:
+    ```bash
+    irb> author = Author.new
+    irb> book = author.books.new
+    irb> book.save!
+    irb> book.persisted?
+    => true
+    irb> author.persisted?
+    => true
+    ```
+
+  - Valide a `presença` e `ausência` de associações em mais casos:
+    ```bash
+    irb> book = Book.new
+    irb> book.valid?
+    => false
+    irb> book.errors.full_messages
+    => ["Author must exist"]
+    irb> author = Author.new
+    irb> book = author.books.new
+    irb> book.valid?
+    => true
+    ```
+
+O Active Record suporta identificação automática para a maioria das associações com nomes padrão. No entanto, as associações bidirecionais que contêm as opções `:through` ou `:foreign_key` não serão identificadas automaticamente.
+
+Os escopos personalizados na associação oposta também impedem a identificação automática, assim como os escopos personalizados na própria associação, a menos que `config.active_record.automatic_scope_inversing` sejam definidos como verdadeiros (o padrão para novos aplicativos).
+
+Por exemplo, considere as seguintes declarações de modelo:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+end
+
+class Book < ApplicationRecord
+  belongs_to :writer, class_name: 'Author', foreign_key: 'author_id'
+end
+```
+
+Devido à opção `:foreign_key`, o Active Record não reconhecerá mais automaticamente a associação bidirecional. Isso pode fazer com que seu aplicativo:
+
+  - Execute consultas desnecessárias para os mesmos dados (neste exemplo, causando N+1 consultas):
+    ```bash
+    irb> author = Author.first
+    irb> author.books.any? do |book|
+    irb>   book.author.equal?(author) # This executes an author query for every book
+    irb> end
+    => false
+    ```
+
+  - Faça referência a várias cópias de um modelo com dados inconsistentes:
+    ```bash
+    irb> author = Author.first
+    irb> book = author.books.first
+    irb> author.name == book.author.name
+    => true
+    irb> author.name = "Changed Name"
+    irb> author.name == book.author.name
+    => false
+    ```
+
+  - Falha ao salvar associações automaticamente:
+    ```bash
+    irb> author = Author.new
+    irb> book = author.books.new
+    irb> book.save!
+    irb> book.persisted?
+    => true
+    irb> author.persisted?
+    => false
+    ```
+
+  - Falha ao validar presença ou ausência:
+    ```bash
+    irb> author = Author.new
+    irb> book = author.books.new
+    irb> book.valid?
+    => false
+    irb> book.errors.full_messages
+    => ["Author must exist"]
+    ```
+
+O Active Record oferece a opção `:inverse_of` para que você possa declarar explicitamente associações bidirecionais:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, inverse_of: 'writer'
+end
+
+class Book < ApplicationRecord
+  belongs_to :writer, class_name: 'Author', foreign_key: 'author_id'
+end
+```
+
+Ao incluir a opção `:inverse_of` na declaração de associação `has_many` , o Active Record agora reconhecerá a associação bidirecional e se comportará como nos exemplos iniciais acima.
+
+## Referência detalhada da associação
+
+As seções a seguir fornecem detalhes de cada tipo de associação, incluindo os métodos que elas adicionam e as opções que você pode usar ao declarar uma associação.
+
+### Referência de Associação `belongs_to`
+
+Em termos de banco de dados, a associação `belongs_to` afirma que a tabela deste modelo contém uma coluna que representa uma referência a outra tabela. Isto pode ser usado para configurar relações um-para-um ou um-para-muitos, dependendo da configuração. Se a tabela da outra classe contiver a referência em uma relação um-para-um, você deverá usá-la com `has_one`
+
+#### Métodos Adicionados por `belongs_to`
+
+Ao declarar uma associação `belongs_to`, a classe declarante ganha automaticamente 8 métodos relacionados à associação:
+
+- `association`
+- `association=(associate)`
+- `build_association(attributes = {})`
+- `create_association(attributes = {})`
+- `create_association!(attributes = {})`
+- `reload_association`
+- `reset_association`
+- `association_changed?`
+- `association_previously_changed?`
+
+Em todos esses métodos, `association` é substituído pelo símbolo passado como primeiro argumento para `belongs_to`. Por exemplo, dada a declaração:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author
+end
+```
+
+Cada instância do Bookmodelo terá estes métodos:
+
+- `author`
+- `author=`
+- `build_author`
+- `create_author`
+- `create_author!`
+- `reload_author`
+- `reset_author`
+- `author_changed?`
+- `author_previously_changed?`
+
+![Aviso Active Record Associations](/imagens/active_record_associations13.JPG)
+
+
+##### association
+
+O método `association` retorna o objeto associado, se houver. Se nenhum objeto associado for encontrado, ele retornará `nil`.
+
+```ruby
+@author = @book.author
+```
+
+Se o objeto associado já tiver sido recuperado do banco de dados para este objeto, a versão em cache será retornada. Para substituir esse comportamento (e forçar a leitura do banco de dados), chame `#reload_association` no objeto pai.
+
+```ruby
+@book.reset_author
+```
+
+##### association=(associate)
+
+O método `association=` atribui um objeto associado a este objeto. Nos bastidores, isso significa extrair a chave primária do objeto associado e definir a chave estrangeira desse objeto com o mesmo valor.
+
+```ruby
+@book.author = @author
+```
+
+##### build_association(attributes = {})
+
+O método `build_association` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, e o link através da chave estrangeira deste objeto será definido, mas o objeto associado ainda não será salvo.
+
+```ruby
+@author = @book.build_author(author_number: 123,
+                             author_name: "John Doe")
+```
+
+##### create_association(attributes = {})
+
+O método `create_association` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, o link através da chave estrangeira deste objeto será definido e, uma vez aprovado em todas as validações especificadas no modelo associado, o objeto associado será salvo.
+
+```ruby
+@author = @book.create_author(author_number: 123,
+                              author_name: "John Doe")
+```
+
+##### create_association!(attributes = {})
+
+Faz o mesmo que `create_association` acima, mas aumenta `ActiveRecord::RecordInvalid` se o registro for inválido.
+
+##### association_changed?
+
+O método `association_changed?` retorna verdadeiro se um novo objeto associado tiver sido atribuído e a chave estrangeira será atualizada no próximo salvamento.
+
+```bash
+@book.author # => #<Author author_number: 123, author_name: "John Doe">
+@book.author_changed? # => false
+
+@book.author = Author.second # => #<Author author_number: 456, author_name: "Jane Smith">
+@book.author_changed? # => true
+
+@book.save!
+@book.author_changed? # => false
+```
+
+##### association_previously_changed?
+
+O método `association_previously_changed?` retorna verdadeiro se o salvamento anterior atualizou a associação para fazer referência a um novo objeto associado.
+
+```bash
+@book.author # => #<Author author_number: 123, author_name: "John Doe">
+@book.author_previously_changed? # => false
+
+@book.author = Author.second # => #<Author author_number: 456, author_name: "Jane Smith">
+@book.save!
+@book.author_previously_changed? # => true
+```
+
+#### Opções para `belongs_to`
+
+Embora o Rails use padrões inteligentes que funcionarão bem na maioria das situações, pode haver momentos em que você queira personalizar o comportamento da referência de associação `belongs_to`. Essas personalizações podem ser realizadas facilmente passando opções e blocos de escopo ao criar a associação. Por exemplo, esta associação usa duas dessas opções:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, touch: :books_updated_at,
+    counter_cache: true
+end
+```
+
+A belongs_toassociação apoia estas opções:
+
+- `:autosave`
+- `:class_name`
+- `:counter_cache`
+- `:default`
+- `:dependent`
+- `:ensuring_owner_was`
+- `:foreign_key`
+- `:foreign_type`
+- `:primary_key`
+- `:inverse_of`
+- `:optional`
+- `:polymorphic`
+- `:required`
+- `:strict_loading`
+- `:touch`
+- `:validate`
+
+##### :autosave
+
+Se você definir a opção `:autosave` como `true`, o Rails salvará quaisquer membros da associação carregados e destruirá os membros marcados para destruição sempre que você salvar o objeto pai. Definir `:autosave` como `false` não é o mesmo que não definir a opção `:autosave`. Se a opção `:autosave` não estiver presente, os novos objetos associados serão salvos, mas os objetos associados atualizados não serão salvos.
+
+
+##### :class_name
+
+Se o nome do outro modelo não puder ser derivado do nome da associação, você poderá usar a opção `:class_name` para fornecer o nome do modelo. Por exemplo, se um livro pertence a um autor, mas o nome real do modelo que contém os autores é Patron, você configuraria as coisas desta forma:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, class_name: "Patron"
+end
+```
+
+##### :counter_cache
+
+A opção `:counter_cache` pode ser usada para tornar mais eficiente a localização do número de objetos pertencentes. Considere estes modelos:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+Com essas declarações, solicitar o valor de `@author.books.size` requer fazer uma chamada ao banco de dados para realizar uma COUNT(*)consulta. Para evitar esta chamada, você pode adicionar um cache de contador ao modelo pertencente :
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, counter_cache: true
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+Com esta declaração, Rails manterá o valor do cache atualizado e então retornará esse valor em resposta ao método `size`.
+
+Embora a opção `:counter_cache` seja especificada no modelo que inclui a declaração `belongs_to`, a coluna real deve ser adicionada ao modelo associado (`has_many`). No caso acima, você precisaria adicionar uma coluna nomeada `books_count` ao modelo `Author`.
+
+Você pode substituir o nome da coluna padrão especificando um nome de coluna personalizado na declaração `counter_cache` em vez de true. Por exemplo, para usar `count_of_books` em vez de `books_count`:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, counter_cache: :count_of_books
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+![Aviso Active Record Associations -Aviso counter_cache](/imagens/active_record_associations14.JPG)
+
+As colunas de cache do contador são adicionadas à lista de atributos somente leitura do modelo proprietário por meio de `attr_readonly`.
+
+Se por algum motivo você alterar o valor da chave primária de um modelo proprietário e não atualizar também as chaves estrangeiras dos modelos contados, o cache do contador poderá ter dados obsoletos. Em outras palavras, quaisquer modelos órfãos ainda contarão para o contador. Para corrigir um cache de contador obsoleto, use `reset_counters`.
+
+##### :default
+
+Quando definido como `true`, a associação não terá sua presença validada.
+
+##### :dependent
+
+Se você definir a opção `:dependent` para:
+
+- `:destroy`, quando o objeto for destruído, `destroy` será chamado em seus objetos associados.
+- `:delete`, quando o objeto for destruído, todos os seus objetos associados serão excluídos diretamente do banco de dados sem chamar seu destroymétodo.
+- `:destroy_async`: quando o objeto é destruído, um `ActiveRecord::DestroyAssociationAsyncJob` trabalho é enfileirado e chamará destroy em seus objetos associados. O trabalho ativo deve ser configurado para que isso funcione. Não utilize esta opção se a associação for apoiada por restrições de chave estrangeira no seu banco de dados. As ações de restrição de chave estrangeira ocorrerão dentro da mesma transação que exclui seu proprietário.
+
+![Aviso Active Record Associations -Aviso dependent](/imagens/active_record_associations15.JPG)
+
+
+##### ensuring_owner_was
+
+Especifica um método de instância a ser chamado pelo proprietário. O método deve retornar verdadeiro para que os registros associados sejam excluídos em uma tarefa em segundo plano.
+
+##### :foreign_key
+
+Por convenção, Rails assume que a coluna usada para armazenar a chave estrangeira neste modelo é o nome da associação com o sufixo `_id` adicionado. A opção `:foreign_key` permite definir o nome da chave estrangeira diretamente:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, class_name: "Patron",
+                      foreign_key: "patron_id"
+end
+```
+
+![Aviso Active Record Associations -Aviso foreign_key](/imagens/active_record_associations16.JPG)
+
+
+##### foreign_type
+
+Especifique a coluna utilizada para armazenar o tipo do objeto associado, caso se trate de uma associação polimórfica. Por padrão, este é considerado o nome da associação com um `_type` sufixo “”. Portanto, uma classe que define uma associação `belongs_to :taggable, polymorphic: true` usará “`taggable_type`” como padrão `:foreign_type`.
+
+##### :primary_key
+
+Por convenção, Rails assume que a coluna `id` é usada para armazenar a chave primária de suas tabelas. A opção `:primary_key`  permite especificar uma coluna diferente.
+
+Por exemplo, dado que temos uma tabela `users` e `guid` como chave primária. Se quisermos que uma tabela `todos` separada armazene a chave estrangeira `user_id` na coluna `guid`, podemos usar `primary_key` para conseguir isso da seguinte forma:
+
+```ruby
+class User < ApplicationRecord
+  self.primary_key = 'guid' # primary key is guid and not id
+end
+
+class Todo < ApplicationRecord
+  belongs_to :user, primary_key: 'guid'
+end
+```
+
+Quando executarmos `@user.todos.create`, o registro `@todo` terá seu valor `user_id` como o valor `guid` de `@user`.
+
+
+##### :inverse_of
+
+A opção `:inverse_of` especifica o nome da associação `has_many` ou `has_one` que é o inverso desta associação. Consulte a seção de associação bidirecional para obter mais detalhes.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, inverse_of: :author
+end
+
+class Book < ApplicationRecord
+  belongs_to :author, inverse_of: :books
+end
+```
+
+##### :optional
+
+Se você definir a opção `:optional` como `true`, a presença do objeto associado não será validada. Por padrão, esta opção está definida como false.
+
+
+##### :polymorphic
+Passar `true` para a opção `:polymorphic` indica que se trata de uma associação polimórfica. As associações polimórficas foram discutidas em detalhes anteriormente neste guia .
+
+
+##### :required
+Quando definido como `true`, a associação também terá sua presença validada. Isto validará a associação em si, não o id. Você pode usar `:inverse_of` para evitar uma consulta extra durante a validação.
+
+![Aviso Active Record Associations -Aviso required](/imagens/active_record_associations17.JPG)
+
+
+##### :strict_loading
+
+Aplica o carregamento estrito sempre que o registro associado é carregado por meio desta associação.
+
+
+##### :touch
+
+Se você definir a opção `:touch` como `true`, o carimbo de data/hora `updated_at` ou `updated_on` no objeto associado será definido para a hora atual sempre que esse objeto for salvo ou destruído:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, touch: true
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+Nesse caso, salvar ou destruir um livro atualizará o carimbo de data/hora do autor associado. Você também pode especificar um atributo de carimbo de data/hora específico para atualização:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, touch: :books_updated_at
+end
+```
+
+
+##### :validate
+
+Se você definir a opção `:validate` como `true`, então novos objetos associados serão validados sempre que você salvar este objeto. Por padrão, isto é `false`: novos objetos associados não serão validados quando este objeto for salvo.
+
+
+
+####  Escopos para `belongs_to`
+
+Pode haver momentos em que você deseja personalizar a consulta usada pelo `belongs_to`. Essas personalizações podem ser obtidas por meio de um bloco de escopo. Por exemplo:
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, -> { where active: true }
+end
+```
+
+Você pode usar qualquer um dos métodos de consulta padrão dentro do bloco de escopo. Os seguintes são discutidos abaixo:
+
+- `where`
+- `includes`
+- `readonly`
+- `select`
+
+
+##### where
+
+O método `where` permite especificar as condições que o objeto associado deve atender.
+
+```ruby
+class Book < ApplicationRecord
+  belongs_to :author, -> { where active: true }
+end
+```
+
+##### includes
+
+Você pode usar o método `includes` para especificar associações de segunda ordem que devem ser carregadas antecipadamente quando essa associação for usada. Por exemplo, considere estes modelos:
+
+```ruby
+class Chapter < ApplicationRecord
+  belongs_to :book
+end
+
+class Book < ApplicationRecord
+  belongs_to :author
+  has_many :chapters
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+Se você recupera frequentemente autores diretamente de capítulos (`@chapter.book.author`), então você pode tornar seu código um pouco mais eficiente incluindo autores na associação de capítulos a livros:
+
+```ruby
+class Chapter < ApplicationRecord
+  belongs_to :book, -> { includes :author }
+end
+
+class Book < ApplicationRecord
+  belongs_to :author
+  has_many :chapters
+end
+
+class Author < ApplicationRecord
+  has_many :books
+end
+```
+
+![Aviso Active Record Associations -Aviso includes](/imagens/active_record_associations18.JPG)
+
+
+##### readonly
+
+Se você usar `readonly`, o objeto associado será somente leitura quando recuperado por meio da associação.
+
+##### select
+
+O método `select` permite substituir a cláusula `SELECT` do SQL usada para recuperar dados sobre o objeto associado. Por padrão, o Rails recupera todas as colunas.
+
+![Aviso Active Record Associations -Aviso select](/imagens/active_record_associations19.JPG)
+
+
+#### Existe algum objeto associado?
+
+Você pode ver se existe algum objeto associado usando o método `association.nil?`:
+
+```ruby
+if @book.author.nil?
+  @msg = "No author found for this book"
+end
+```
+
+#### Quando os objetos são salvos?
+Atribuir um objeto a uma associação `belongs_to` não salva automaticamente o objeto. Também não salva o objeto associado.
+
+
+
+### Referência de Associação `has_one`
+
+A associação `has_one` cria uma correspondência um-para-um com outro modelo. Em termos de banco de dados, esta associação diz que a outra classe contém a chave estrangeira. Se esta classe contiver a chave estrangeira, você deverá usar `belongs_to`.
+
+
+
+#### Métodos Adicionados por `has_one`
+
+Ao declarar uma has_oneassociação, a classe declarante ganha automaticamente 6 métodos relacionados à associação:
+
+- `association`
+- `association=(associate)`
+- `build_association(attributes = {})`
+- `create_association(attributes = {})`
+- `create_association!(attributes = {})`
+- `reload_association`
+- `reset_association`
+
+Em todos esses métodos, associationé substituído pelo símbolo passado como primeiro argumento para has_one. Por exemplo, dada a declaração:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account
+end
+```
+
+Cada instância do modelo `Supplier` terá estes métodos:
+
+- `account`
+- `account=`
+- `build_account`
+- `create_account`
+- `create_account!`
+- `reload_account`
+- `reset_account`
+
+![Aviso Active Record Associations -has_one](/imagens/active_record_associations20.JPG)
+
+
+
+##### association
+
+O método `association` retorna o objeto associado, se houver. Se nenhum objeto associado for encontrado, ele retornará `nil`.
+
+```ruby
+@account = @supplier.account
+```
+
+Se o objeto associado já tiver sido recuperado do banco de dados para este objeto, a versão em cache será retornada. Para substituir esse comportamento (e forçar a leitura do banco de dados), chame `#reload_association` no objeto pai.
+
+```ruby
+@account = @supplier.reload_account
+```
+
+Para descarregar a versão em cache do objeto associado — forçando o próximo acesso, se houver, para consultá-lo no banco de dados — chame `#reset_association` no objeto pai.
+
+```ruby
+@supplier.reset_account
+```
+
+
+##### association=(associate)
+
+O método `association=` atribui um objeto associado a este objeto. Nos bastidores, isso significa extrair a chave primária deste objeto e definir a chave estrangeira do objeto associado com o mesmo valor.
+
+```ruby
+@supplier.account = @account
+```
+
+
+##### build_association(attributes = {})
+
+O método `build_association` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, e o link através de sua chave estrangeira será definido, mas o objeto associado ainda não será salvo.
+
+```ruby
+@account = @supplier.build_account(terms: "Net 30")
+```
+
+
+##### create_association(attributes = {})
+
+O método `create_association` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, o link através de sua chave estrangeira será definido e, uma vez aprovado em todas as validações especificadas no modelo associado, o objeto associado será salvo.
+
+```ruby
+@account = @supplier.create_account(terms: "Net 30")
+```
+
+
+##### create_association!(attributes = {})
+
+Faz o mesmo que `create_association` acima, mas aumenta `ActiveRecord::RecordInvalid` se o registro for inválido.
+
+####  Opções para `has_one`
+
+Embora o Rails use padrões inteligentes que funcionarão bem na maioria das situações, pode haver momentos em que você queira personalizar o comportamento da referência de associação `has_one`. Essas personalizações podem ser facilmente realizadas passando opções ao criar a associação. Por exemplo, esta associação usa duas dessas opções:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, class_name: "Billing", dependent: :nullify
+end
+```
+
+A associação `has_one` apoia estas opções:
+
+- `:as`
+- `:autosave`
+- `:class_name`
+- `:dependent`
+- `:disable_joins`
+- `:ensuring_owner_was`
+- `:foreign_key`
+- `:inverse_of`
+- `:primary_key`
+- `:query_constraints`
+- `:required`
+- `:source`
+- `:source_type`
+- `:strict_loading`
+- `:through`
+- `:touch`
+- `:validate`
+
+##### :as
+
+Definir a opção `:as` indica que esta é uma associação polimórfica. As associações polimórficas foram discutidas em detalhes anteriormente neste guia .
+
+##### :autosave
+
+Se você definir a opção `:autosave` como `true`, o Rails salvará quaisquer membros da associação carregados e destruirá os membros marcados para destruição sempre que você salvar o objeto pai. Definir `:autosave` como `false` não é o mesmo que não definir a opção `:autosave`. Se a opção `:autosave` não estiver presente, os novos objetos associados serão salvos, mas os objetos associados atualizados não serão salvos.
+
+##### :class_name
+
+Se o nome do outro modelo não puder ser derivado do nome da associação, você poderá usar a opção `:class_name` para fornecer o nome do modelo. Por exemplo, se um fornecedor tiver uma conta, mas o nome real do modelo que contém as contas for Billing, você configuraria as coisas desta forma:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, class_name: "Billing"
+end
+```
+
+##### :dependent
+
+Controla o que acontece com o objeto associado quando seu proprietário é destruído:
+
+- `:destroy` faz com que o objeto associado também seja destruído
+- `:delete` faz com que o objeto associado seja excluído diretamente do banco de dados (portanto, os retornos de chamada não serão executados)
+- `:destroy_async`: quando o objeto é destruído, um trabalho `ActiveRecord::DestroyAssociationAsyncJob` é enfileirado e chamará destroy em seus objetos associados. O trabalho ativo deve ser configurado para que isso funcione. Não utilize esta opção se a associação for apoiada por restrições de chave estrangeira no seu banco de dados. As ações de restrição de chave estrangeira ocorrerão dentro da mesma transação que exclui seu proprietário.
+- `:nullify` faz com que a chave estrangeira seja definida como NULL. A coluna do tipo polimórfico também é anulada em associações polimórficas. Os retornos de chamada não são executados.
+- `:restrict_with_exception` faz com que uma exceção `ActiveRecord::DeleteRestrictionError` seja levantada se houver um registro associado
+- `:restrict_with_error` faz com que um erro seja adicionado ao proprietário se houver um objeto associado
+
+É necessário não definir ou deixar opções `:nullify` para associações que possuem restrições de banco de dados `NOT NULL`. Se você não definir `dependent` a destruição de tais associações, não poderá alterar o objeto associado porque a chave estrangeira do objeto associado inicial será definida com o valor `NULL` não permitido.
+
+
+##### :disable_joins
+Especifica se as junções devem ser ignoradas para uma associação. Se definido como `true`, duas ou mais consultas serão geradas. Observe que em alguns casos, se for aplicada ordem ou limite, isso será feito na memória devido a limitações do banco de dados. Esta opção só é aplicável em associações `has_one :through` , pois `has_one` sozinha não realiza uma junção.
+
+
+##### :foreign_key
+
+Por convenção, Rails assume que a coluna usada para armazenar a chave estrangeira no outro modelo é o nome deste modelo com o sufixo `_id` adicionado. A opção `:foreign_key` permite definir o nome da chave estrangeira diretamente:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, foreign_key: "supp_id"
+end
+```
+
+![Aviso Active Record Associations -Aviso foreign_key](/imagens/active_record_associations16.JPG)
+
+
+
+##### :inverse_of
+
+A opção `:inverse_of` especifica o nome da associação `belongs_to` que é o inverso desta associação. Consulte a seção de associação bidirecional para obter mais detalhes.
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, inverse_of: :supplier
+end
+
+class Account < ApplicationRecord
+  belongs_to :supplier, inverse_of: :account
+end
+```
+
+
+##### :primary_key
+
+Por convenção, Rails assume que a coluna usada para armazenar a chave primária deste modelo é `id`. Você pode substituir isso e especificar explicitamente a chave primária com a opção `:primary_key`.
+
+
+
+##### :query_constraints
+
+Serve como uma chave estrangeira composta. Define a lista de colunas a serem utilizadas para consultar o objeto associado. Esta é uma opção opcional. Por padrão, o Rails tentará derivar o valor automaticamente. Quando o valor é definido, o tamanho do Array deve corresponder à chave primária do modelo associado ou ao tamanho de query_constraints.
+
+
+
+##### :required
+
+Quando definido como `true`, a associação também terá sua presença validada. Isto validará a associação em si, não o id. Você pode usar `:inverse_of` para evitar uma consulta extra durante a validação.
+
+
+##### :source
+
+A opção `:source` especifica o nome da associação de origem para uma associação `has_one :through`.
+
+
+
+##### :source_type
+
+A opção `:source_type` especifica o tipo de associação de origem para uma associação `has_one :through` que prossegue através de uma associação polimórfica.
+
+```ruby
+class Author < ApplicationRecord
+  has_one :book
+  has_one :hardback, through: :book, source: :format, source_type: "Hardback"
+  has_one :dust_jacket, through: :hardback
+end
+
+class Book < ApplicationRecord
+  belongs_to :format, polymorphic: true
+end
+
+class Paperback < ApplicationRecord; end
+
+class Hardback < ApplicationRecord
+  has_one :dust_jacket
+end
+
+class DustJacket < ApplicationRecord; end
+```
+
+
+##### :strict_loading
+
+Aplica o carregamento estrito sempre que o registro associado é carregado por meio desta associação.
+
+
+
+##### :through
+
+A opção `:through` especifica um modelo de junção através do qual realizar a consulta. As associações `has_one :through` foram discutidas em detalhes anteriormente neste guia .
+
+
+
+##### :touch
+
+Se você definir a opção `:touch` como `true`, o carimbo de data/hora `updated_at` ou `updated_on` no objeto associado será definido para a hora atual sempre que esse objeto for salvo ou destruído:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, touch: true
+end
+
+class Account < ApplicationRecord
+  belongs_to :supplier
+end
+```
+
+Neste caso, salvar ou destruir um fornecedor atualizará o carimbo de data/hora da conta associada. Você também pode especificar um atributo de carimbo de data/hora específico para atualização:
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, touch: :suppliers_updated_at
+end
+```
+
+##### :validate
+
+Se você definir a opção `:validate` como `true`, então novos objetos associados serão validados sempre que você salvar este objeto. Por padrão, isto é `false`: novos objetos associados não serão validados quando este objeto for salvo.
+
+
+
+#### Escopos para `has_one`
+
+
