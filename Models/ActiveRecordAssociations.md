@@ -1893,4 +1893,658 @@ O método `collection.where` encontra objetos dentro da coleção com base nas c
 @available_book = @available_books.first # Now the database will be queried
 ```
 
-###### collection.exists?(...)
+
+##### collection.exists?(...)
+
+O método `collection.exists?` verifica se existe um objeto que atenda às condições fornecidas na tabela da coleção.
+
+
+##### collection.build(attributes = {})
+
+O método `collection.build` retorna um único ou uma matriz de novos objetos do tipo associado. O(s) objeto(s) serão instanciados a partir dos atributos passados, e o link através de sua chave estrangeira será criado, mas os objetos associados ainda não serão salvos.
+
+```ruby
+@book = @author.books.build(published_at: Time.now,
+                            book_number: "A12345")
+
+@books = @author.books.build([
+  { published_at: Time.now, book_number: "A12346" },
+  { published_at: Time.now, book_number: "A12347" }
+])
+```
+
+
+##### collection.create(attributes = {})
+
+O método `collection.create` retorna um único ou uma matriz de novos objetos do tipo associado. O(s) objeto(s) será(ão) instanciado(s) a partir dos atributos passados, o link através de sua chave estrangeira será criado e, uma vez aprovado em todas as validações especificadas no modelo associado, o objeto associado será salvo.
+
+```ruby
+@book = @author.books.create(published_at: Time.now,
+                             book_number: "A12345")
+
+@books = @author.books.create([
+  { published_at: Time.now, book_number: "A12346" },
+  { published_at: Time.now, book_number: "A12347" }
+])
+```
+
+
+##### collection.create!(attributes = {})
+
+Faz o mesmo que `collection.create` acima, mas aumenta `ActiveRecord::RecordInvalid` se o registro for inválido.
+
+
+##### collection.reload
+
+O método `collection.reload` retorna uma Relação de todos os objetos associados, forçando a leitura do banco de dados. Se não houver objetos associados, retorna uma Relação vazia.
+
+```ruby
+@books = @author.books.reload
+```
+
+
+####  Opções para `has_many`
+
+Embora o Rails use padrões inteligentes que funcionarão bem na maioria das situações, pode haver momentos em que você queira personalizar o comportamento da referência de associação `has_many`. Essas personalizações podem ser facilmente realizadas passando opções ao criar a associação. Por exemplo, esta associação usa duas dessas opções:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, dependent: :delete_all, validate: false
+end
+```
+
+A associação `has_many` apoia estas opções:
+
+- `:as`
+- `:autosave`
+- `:class_name`
+- `:counter_cache`
+- `:dependent`
+- `:disable_joins`
+- `:ensuring_owner_was`
+- `:extend`
+- `:foreign_key`
+- `:foreign_type`
+- `:inverse_of`
+- `:primary_key`
+- `:query_constraints`
+- `:source`
+- `:source_type`
+- `:strict_loading`
+- `:through`
+- `:validate`
+
+
+##### :as
+
+Definir a opção `:as` indica que esta é uma associação polimórfica, conforme discutido anteriormente neste guia .
+
+
+##### :autosave
+
+Se você definir a opção `:autosave` como `true`, o Rails salvará quaisquer membros da associação carregados e destruirá os membros marcados para destruição sempre que você salvar o objeto pai. Definir `:autosave` como `false` não é o mesmo que não definir a opção `:autosave`. Se a opção `:autosave` não estiver presente, os novos objetos associados serão salvos, mas os objetos associados atualizados não serão salvos.
+
+
+##### :class_name
+
+Se o nome do outro modelo não puder ser derivado do nome da associação, você poderá usar a opção `:class_name` para fornecer o nome do modelo. Por exemplo, se um autor tiver muitos livros, mas o nome real do modelo que contém os livros for `Transaction`, você configuraria as coisas desta forma:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, class_name: "Transaction"
+end
+```
+
+
+##### :counter_cache
+
+Esta opção pode ser usada para configurar um arquivo `:counter_cache`. Você só precisa desta opção quando personalizou o nome da sua associação `:counter_cache` `pertence_to`.
+
+
+##### :dependent
+
+Controla o que acontece com os objetos associados quando seu proprietário é destruído:
+
+- `:destroy` faz com que todos os objetos associados também sejam destruídos
+- `:delete_all` faz com que todos os objetos associados sejam excluídos diretamente do banco de dados (portanto, os retornos de chamada não serão executados)
+- `:destroy_async`: quando o objeto é destruído, um trabalho `ActiveRecord::DestroyAssociationAsyncJob` é enfileirado e chamará destroy em seus objetos associados. O trabalho ativo deve ser configurado para que isso funcione.
+- `:nullify` faz com que a chave estrangeira seja definida como `NULL`. A coluna do tipo polimórfico também é anulada em associações polimórficas. Os retornos de chamada não são executados.
+- `:restrict_with_exception` faz com que uma exceção `ActiveRecord::DeleteRestrictionError` seja levantada se houver algum registro associado
+- `:restrict_with_error` faz com que um erro seja adicionado ao proprietário se houver algum objeto associado
+
+As opções `:destroy` e `:delete_all` também afetam a semântica dos métodos `collection.delete` e `collection=`, fazendo com que eles destruam objetos associados quando são removidos da coleção.
+
+
+##### :disable_joins
+
+Especifica se as junções devem ser ignoradas para uma associação. Se definido como verdadeiro, duas ou mais consultas serão geradas. Observe que em alguns casos, se for aplicada ordem ou limite, isso será feito na memória devido a limitações do banco de dados. Esta opção só é aplicável `has_many :through associations` quando `has_many` sozinho não executa uma junção.
+
+
+##### :ensuring_owner_was
+
+Especifica um método de instância a ser chamado pelo proprietário. O método deve retornar verdadeiro para que os registros associados sejam excluídos em uma tarefa em segundo plano.
+
+
+##### :extend
+
+Especifica um módulo ou matriz de módulos que será estendido ao objeto de associação retornado. Útil para definir métodos em associações, especialmente quando devem ser compartilhados entre vários objetos de associação.
+
+
+##### :foreign_key
+
+Por convenção, Rails assume que a coluna usada para armazenar a chave estrangeira no outro modelo é o nome deste modelo com o sufixo `_id` adicionado. A opção `:foreign_key` permite definir o nome da chave estrangeira diretamente:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, foreign_key: "cust_id"
+end
+```
+
+![Aviso Active Record Associations -Aviso foreign_key](/imagens/active_record_associations16.JPG)
+
+
+##### :foreign_type
+
+Especifique a coluna utilizada para armazenar o tipo do objeto associado, caso se trate de uma associação polimórfica. Por padrão, este é considerado o nome da associação polimórfica especificada na opção `as` “ ” com um sufixo `_type` “ ”. Portanto, uma classe que define uma associação `has_many :tags, as: :taggable` usará “`taggable_type`” como padrão `:foreign_type`.
+
+
+##### :inverse_of
+
+A opção `:inverse_of` especifica o nome da associação `belongs_to` que é o inverso desta associação. Consulte a seção de associação bidirecional para obter mais detalhes.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, inverse_of: :author
+end
+
+class Book < ApplicationRecord
+  belongs_to :author, inverse_of: :books
+end
+```
+
+
+##### :primary_key
+
+Por convenção, Rails assume que a coluna usada para conter a chave primária da associação é `id`. Você pode substituir isso e especificar explicitamente a chave primária com a opção `:primary_key`.
+
+Digamos que a tabela `users` tenha `id` como chave primária, mas também tenha uma coluna `guid` . O requisito é que a tabela `todos`  mantenha o valor da coluna `guid` como chave estrangeira e não `id` como valor. Isso pode ser alcançado assim:
+
+```ruby
+class User < ApplicationRecord
+  has_many :todos, primary_key: :guid
+end
+```
+
+Agora, se executarmos `@todo = @user.todos.create`, o valor `@todo` do registro `user_id` será o valor `guid` de `@user`.
+
+
+##### :query_constraints
+
+Serve como uma chave estrangeira composta. Define a lista de colunas a serem utilizadas para consultar o objeto associado. Esta é uma opção opcional. Por padrão, o Rails tentará derivar o valor automaticamente. Quando o valor é definido, o tamanho do Array deve corresponder à chave primária ou `query_constraints` ao tamanho do modelo associado.
+
+
+##### :source
+
+A opção `:source` especifica o nome da associação de origem para uma associação `has_many :through`. Você só precisará usar esta opção se o nome da associação de origem não puder ser inferido automaticamente a partir do nome da associação.
+
+
+##### :source_type
+
+A opção `:source_type` especifica o tipo de associação de origem para uma associação `has_many :through` que prossegue através de uma associação polimórfica.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+  has_many :paperbacks, through: :books, source: :format, source_type: "Paperback"
+end
+
+class Book < ApplicationRecord
+  belongs_to :format, polymorphic: true
+end
+
+class Hardback < ApplicationRecord; end
+class Paperback < ApplicationRecord; end
+```
+
+
+##### :strict_loading
+
+Quando definido como verdadeiro, impõe carregamento estrito sempre que o registro associado é carregado por meio desta associação.
+
+
+##### :through
+
+A opção `:through` especifica um modelo de junção através do qual realizar a consulta. As associações `has_many :through` fornecem uma maneira de implementar relacionamentos muitos-para-muitos, conforme discutido anteriormente neste guia .
+
+
+##### :validate
+
+Se você definir a opção `:validate` como `false`, os novos objetos associados não serão validados sempre que você salvar esse objeto. Por padrão, isto é `true`: novos objetos associados serão validados quando este objeto for salvo.
+
+
+#### Escopos para `has_many`
+
+Pode haver momentos em que você deseja personalizar a consulta usada pelo `has_many`. Essas personalizações podem ser obtidas por meio de um bloco de escopo. Por exemplo:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, -> { where processed: true }
+end
+```
+
+Você pode usar qualquer um dos métodos de consulta padrão dentro do bloco de escopo. Os seguintes são discutidos abaixo:
+
+- `where`
+- `extending`
+- `group`
+- `includes`
+- `limit`
+- `offset`
+- `order`
+- `readonly`
+- `select`
+- `distinct`
+
+
+##### where
+
+O método `where` permite especificar as condições que o objeto associado deve atender.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :confirmed_books, -> { where "confirmed = 1" },
+    class_name: "Book"
+end
+```
+
+Você também pode definir condições por meio de um hash:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :confirmed_books, -> { where confirmed: true },
+    class_name: "Book"
+end
+```
+
+Se você usar uma opção de estilo hash `where`, a criação de registros por meio dessa associação terá o escopo automaticamente definido usando o hash. Neste caso, usar `@author.confirmed_books.create` ou `@author.confirmed_books.build` criará livros onde a coluna confirmada possui o valor true.
+
+
+##### extending
+
+O método `extending` especifica um módulo nomeado para estender o proxy de associação. As extensões de associação são discutidas em detalhes posteriormente neste guia .
+
+
+##### group
+
+O método `group` fornece um nome de atributo para agrupar o conjunto de resultados, usando uma cláusula `GROUP BY` no SQL do localizador.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :chapters, -> { group 'books.id' },
+                      through: :books
+end
+```
+
+
+##### includes
+
+Você pode usar o método `includes` para especificar associações de segunda ordem que devem ser carregadas antecipadamente quando essa associação for usada. Por exemplo, considere estes modelos:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+end
+
+class Book < ApplicationRecord
+  belongs_to :author
+  has_many :chapters
+end
+
+class Chapter < ApplicationRecord
+  belongs_to :book
+end
+```
+
+Se você recupera frequentemente capítulos diretamente dos autores (`@author.books.chapters`), então você pode tornar seu código um pouco mais eficiente incluindo capítulos na associação de autores a livros:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, -> { includes :chapters }
+end
+
+class Book < ApplicationRecord
+  belongs_to :author
+  has_many :chapters
+end
+
+class Chapter < ApplicationRecord
+  belongs_to :book
+end
+```
+
+
+##### limit
+
+O método `limit` permite restringir o número total de objetos que serão buscados por meio de uma associação.
+
+```ruby
+class Author < ApplicationRecord
+  has_many :recent_books,
+    -> { order('published_at desc').limit(100) },
+    class_name: "Book"
+end
+```
+
+
+##### offset
+
+O método `offset` permite especificar o deslocamento inicial para buscar objetos por meio de uma associação. Por exemplo, `-> { offset(11) }` irá pular os primeiros 11 registros.
+
+
+##### order
+
+O método `order` determina a ordem em que os objetos associados serão recebidos (na sintaxe usada por uma cláusula `ORDER BY` SQL).
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, -> { order "date_confirmed DESC" }
+end
+```
+
+
+##### readonly
+
+Se você usar o método `readonly`, os objetos associados serão somente leitura quando recuperados por meio da associação.
+
+
+##### select
+
+O método `select` permite substituir a cláusula `SELECT` SQL usada para recuperar dados sobre os objetos associados. Por padrão, o Rails recupera todas as colunas.
+
+![Active Record Association has_many - select](/imagens/active_record_associations24.JPG)
+
+
+
+##### distinct
+
+Use o método `distinct` para manter a coleção livre de duplicatas. Isso é mais útil junto com a opção `:through`.
+
+```ruby
+class Person < ApplicationRecord
+  has_many :readings
+  has_many :articles, through: :readings
+end
+```
+
+```bash
+irb> person = Person.create(name: 'John')
+irb> article = Article.create(name: 'a1')
+irb> person.articles << article
+irb> person.articles << article
+irb> person.articles.to_a
+=> [#<Article id: 5, name: "a1">, #<Article id: 5, name: "a1">]
+irb> Reading.all.to_a
+=> [#<Reading id: 12, person_id: 5, article_id: 5>, #<Reading id: 13, person_id: 5, article_id: 5>]
+```
+
+No caso acima há duas leituras e `person.articles` traz à tona ambas, embora esses registros apontem para o mesmo artigo.
+
+Agora vamos definir distinct:
+
+```ruby
+class Person
+  has_many :readings
+  has_many :articles, -> { distinct }, through: :readings
+end
+```
+
+```bash
+irb> person = Person.create(name: 'Honda')
+irb> article = Article.create(name: 'a1')
+irb> person.articles << article
+irb> person.articles << article
+irb> person.articles.to_a
+=> [#<Article id: 7, name: "a1">]
+irb> Reading.all.to_a
+=> [#<Reading id: 16, person_id: 7, article_id: 7>, #<Reading id: 17, person_id: 7, article_id: 7>]
+```
+
+No caso acima ainda existem duas leituras. Porém `person.articles` mostra apenas um artigo porque a coleção carrega apenas registros únicos.
+
+Se quiser ter certeza de que, após a inserção, todos os registros na associação persistente sejam distintos (para ter certeza de que, ao inspecionar a associação, você nunca encontrará registros duplicados), adicione um índice exclusivo em a própria mesa. Por exemplo, se você tiver uma tabela nomeada `readings` e quiser ter certeza de que os artigos só poderão ser adicionados a uma pessoa uma vez, você poderá adicionar o seguinte em uma migração:
+
+```ruby
+add_index :readings, [:person_id, :article_id], unique: true
+```
+
+Depois de ter esse índice exclusivo, tentar adicionar o artigo a uma pessoa duas vezes gerará um erro `ActiveRecord::RecordNotUnique`:
+
+```bash
+irb> person = Person.create(name: 'Honda')
+irb> article = Article.create(name: 'a1')
+irb> person.articles << article
+irb> person.articles << article
+ActiveRecord::RecordNotUnique
+```
+
+Observe que a verificação da exclusividade usando algo como `include?` está sujeita às condições de corrida. Não tente usar `include?` para impor distinção em uma associação. Por exemplo, usando o exemplo do artigo acima, o código a seguir seria atrevido porque vários usuários poderiam estar tentando fazer isso ao mesmo tempo:
+
+```ruby
+person.articles << article unless person.articles.include?(article)
+```
+
+
+#### Quando os objetos são salvos?
+
+Quando você atribui um objeto a uma associação `has_many`, esse objeto é salvo automaticamente (para atualizar sua chave estrangeira). Se você atribuir vários objetos em uma instrução, todos eles serão salvos.
+
+Se algum desses salvamentos falhar devido a erros de validação, a instrução de atribuição retornará `false` e a atribuição em si será cancelada.
+
+Se o objeto pai (aquele que declara a associação `has_many`) não for salvo (ou seja, `new_record?` retornar `true`), os objetos filhos não serão salvos quando forem adicionados. Todos os membros não salvos da associação serão salvos automaticamente quando o pai for salvo.
+
+Se você deseja atribuir um objeto a uma associação `has_many` sem salvar o objeto, use o método `collection.build`.
+
+
+###  Referência de Associação `has_and_belongs_to_many`
+
+A associação `has_and_belongs_to_many` cria um relacionamento muitos para muitos com outro modelo. Em termos de banco de dados, isso associa duas classes por meio de uma tabela de junção intermediária que inclui chaves estrangeiras referentes a cada uma das classes.
+
+
+#### Métodos Adicionados por `has_and_belongs_to_many`
+
+Quando você declara uma associação `has_and_belongs_to_many`, a classe declarante ganha automaticamente vários métodos relacionados à associação:
+
+- `collection`
+- `collection<<(object, ...)`
+- `collection.delete(object, ...)`
+- `collection.destroy(object, ...)`
+- `collection=(objects)`
+- `collection_singular_ids`
+- `collection_singular_ids=(ids)`
+- `collection.clear`
+- `collection.empty?`
+- `collection.size`
+- `collection.find(...)`
+- `collection.where(...)`
+- `collection.exists?(...)`
+- `collection.build(attributes = {})`
+- `collection.create(attributes = {})`
+- `collection.create!(attributes = {})`
+- `collection.reload`
+
+Em todos esses métodos, `collection` é substituído pelo símbolo passado como primeiro argumento para `has_and_belongs_to_many` e `collection_singular` é substituído pela versão singularizada desse símbolo. Por exemplo, dada a declaração:
+
+```ruby
+class Part < ApplicationRecord
+  has_and_belongs_to_many :assemblies
+end
+```
+
+Cada instância do `Part` modelo terá estes métodos:
+
+```bash
+assemblies
+assemblies<<(object, ...)
+assemblies.delete(object, ...)
+assemblies.destroy(object, ...)
+assemblies=(objects)
+assembly_ids
+assembly_ids=(ids)
+assemblies.clear
+assemblies.empty?
+assemblies.size
+assemblies.find(...)
+assemblies.where(...)
+assemblies.exists?(...)
+assemblies.build(attributes = {}, ...)
+assemblies.create(attributes = {})
+assemblies.create!(attributes = {})
+assemblies.reload
+```
+
+
+##### Métodos de Coluna Adicionais
+
+Se a tabela de junção de uma associação `has_and_belongs_to_many` tiver colunas adicionais além das duas chaves estrangeiras, essas colunas serão adicionadas como atributos aos registros recuperados por meio dessa associação. Os registros retornados com atributos adicionais serão sempre somente leitura, porque o Rails não pode salvar alterações nesses atributo.
+
+
+![Active Record Associations has_and_belongs_to_many - Colunas adicionais](/imagens/active_record_associations25.JPG)
+
+
+##### collection
+
+O método `collection` retorna uma relação de todos os objetos associados. Se não houver objetos associados, retorna uma Relação vazia.
+
+```ruby
+@assemblies = @part.assemblies
+```
+
+
+##### collection<<(object, ...)
+
+O método `collection<<` adiciona um ou mais objetos à coleção criando registros na tabela de junção.
+
+```ruby
+@part.assemblies << @assembly1
+```
+
+![Active Record Associations has_and_belongs_to_many - collection<< ](/imagens/active_record_associations26.JPG)
+
+
+##### collection.delete(object, ...)
+
+O método `collection.delete` remove um ou mais objetos da coleção excluindo registros na tabela de junção. Isso não destrói os objetos.
+
+```ruby
+@part.assemblies.delete(@assembly1)
+```
+
+
+##### collection.destroy(object, ...)
+
+O método `collection.destroy` remove um ou mais objetos da coleção excluindo registros na tabela de junção. Isso não destrói os objetos.
+
+```ruby
+@part.assemblies.destroy(@assembly1)
+```
+
+
+##### collection=(objects)
+
+O método `collection=` faz com que a coleção contenha apenas os objetos fornecidos, adicionando e excluindo conforme apropriado. As alterações são persistidas no banco de dados.
+
+
+##### collection_singular_ids
+
+O método `collection_singular_ids` retorna um array dos ids dos objetos da coleção.
+
+```ruby
+@assembly_ids = @part.assembly_ids
+```
+
+
+##### collection_singular_ids=(ids)
+
+O método `collection_singular_ids=` faz com que a coleção contenha apenas os objetos identificados pelos valores de chave primária fornecidos, adicionando e excluindo conforme apropriado. As alterações são persistidas no banco de dados.
+
+
+##### collection.clear
+
+O método `collection.clear` remove todos os objetos da coleção excluindo as linhas da tabela de junção. Isto não destrói os objetos associados.
+
+
+##### collection.empty?
+
+O método `collection.empty?` retorna truese a coleção não contiver nenhum objeto associado.
+
+```ruby
+<% if @part.assemblies.empty? %>
+  This part is not used in any assemblies
+<% end %>
+```
+
+
+##### collection.size
+
+O método `collection.size` retorna o número de objetos na coleção.
+
+```ruby
+@assembly_count = @part.assemblies.size
+```
+
+
+##### collection.find(...)
+
+O método `collection.find` encontra objetos na tabela da coleção.
+
+```ruby
+@assembly = @part.assemblies.find(1)
+```
+
+
+##### collection.where(...)
+
+O método `collection.where` encontra objetos dentro da coleção com base nas condições fornecidas, mas os objetos são carregados lentamente, o que significa que o banco de dados é consultado apenas quando o(s) objeto(s) são acessados.
+
+```ruby
+@new_assemblies = @part.assemblies.where("created_at > ?", 2.days.ago)
+```
+
+
+##### collection.exists?(...)
+
+O método `collection.exists?` verifica se existe um objeto que atenda às condições fornecidas na tabela da coleção.
+
+
+##### collection.build(attributes = {})
+
+O método `collection.build` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, e o link através da tabela de junção será criado, mas o objeto associado ainda não será salvo.
+
+```ruby
+@assembly = @part.assemblies.build({ assembly_name: "Transmission housing" })
+```
+
+
+##### collection.create(attributes = {})
+
+O método `collection.create` retorna um novo objeto do tipo associado. Este objeto será instanciado a partir dos atributos passados, será criado o link através da tabela de junção e, uma vez aprovado em todas as validações especificadas no modelo associado, o objeto associado será salvo.
+
+```ruby
+@assembly = @part.assemblies.create({ assembly_name: "Transmission housing" })
+```
+
+
+##### collection.create!(attributes = {})
+Faz o mesmo que `collection.create`, mas aumenta `ActiveRecord::RecordInvalid` se o registro for inválido.
+
+
+##### collection.reload
+O método `collection.reload` retorna uma Relação de todos os objetos associados, forçando a leitura do banco de dados. Se não houver objetos associados, retorna uma Relação vazia.
+
+```ruby
+@assemblies = @part.assemblies.reload
+```
+
+
+#### Opções para `has_and_belongs_to_many`
+
