@@ -2548,3 +2548,482 @@ O método `collection.reload` retorna uma Relação de todos os objetos associad
 
 #### Opções para `has_and_belongs_to_many`
 
+Embora o Rails use padrões inteligentes que funcionarão bem na maioria das situações, pode haver momentos em que você queira personalizar o comportamento da referência de associação `has_and_belongs_to_many`. Essas personalizações podem ser facilmente realizadas passando opções ao criar a associação. Por exemplo, esta associação usa duas dessas opções:
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies, -> { readonly },
+                                       autosave: true
+end
+```
+
+A associação `has_and_belongs_to_many` apoia estas opções:
+
+- `:association_foreign_key`
+- `:autosave`
+- `:class_name`
+- `:foreign_key`
+- `:join_table`
+- `:strict_loading`
+- `:validate`
+
+
+##### :association_foreign_key
+
+Por convenção, Rails assume que a coluna na tabela de junção usada para conter a chave estrangeira apontando para o outro modelo é o nome desse modelo com o sufixo _idadicionado. A opção `:association_foreign_key` permite definir o nome da chave estrangeira diretamente:
+
+![Active Record Associations has_and_belongs_to_many - association_foreign_key](/imagens/active_record_associations27.JPG)
+
+```ruby
+class User < ApplicationRecord
+  has_and_belongs_to_many :friends,
+      class_name: "User",
+      foreign_key: "this_user_id",
+      association_foreign_key: "other_user_id"
+end
+```
+
+
+##### :autosave
+
+Se você definir a opção `:autosave` como true, o Rails salvará quaisquer membros da associação carregados e destruirá os membros marcados para destruição sempre que você salvar o objeto pai. Definir `:autosave` como `false` não é o mesmo que não definir a opção `:autosave`. Se a opção `:autosave` não estiver presente, os novos objetos associados serão salvos, mas os objetos associados atualizados não serão salvos.
+
+
+##### :class_name
+
+Se o nome do outro modelo não puder ser derivado do nome da associação, você poderá usar a opção `:class_name` para fornecer o nome do modelo. Por exemplo, se uma peça tiver muitas montagens, mas o nome real do modelo que contém as montagens for `Gadget`, você configuraria as coisas desta forma:
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies, class_name: "Gadget"
+end
+```
+
+
+##### :foreign_key
+
+Por convenção, Rails assume que a coluna na tabela de junção usada para conter a chave estrangeira que aponta para este modelo é o nome deste modelo com o sufixo `_id` adicionado. A opção `:foreign_key` permite definir o nome da chave estrangeira diretamente:
+
+```ruby
+class User < ApplicationRecord
+  has_and_belongs_to_many :friends,
+      class_name: "User",
+      foreign_key: "this_user_id",
+      association_foreign_key: "other_user_id"
+end
+```
+
+
+##### :join_table
+
+Se o nome padrão da tabela de junção, com base na ordem lexical, não for o desejado, você poderá usar a opção `:join_table` para substituir o padrão.
+
+
+##### :strict_loading
+
+Aplica o carregamento estrito sempre que um registro associado é carregado por meio desta associação.
+
+
+##### :validate
+Se você definir a opção `:validate` como `false`, os novos objetos associados não serão validados sempre que você salvar esse objeto. Por padrão, isto é `true`: novos objetos associados serão validados quando este objeto for salvo.
+
+
+### Escopos para `has_and_belongs_to_many`
+
+Pode haver momentos em que você deseja personalizar a consulta usada pelo `has_and_belongs_to_many`. Essas personalizações podem ser obtidas por meio de um bloco de escopo. Por exemplo:
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies, -> { where active: true }
+end
+```
+
+Você pode usar qualquer um dos métodos de consulta padrão dentro do bloco de escopo. Os seguintes são discutidos abaixo:
+
+- `where`
+- `extending`
+- `group`
+- `includes`
+- `limit`
+- `offset`
+- `order`
+- `readonly`
+- `select`
+- `distinct`
+
+
+##### where
+
+O método `where` permite especificar as condições que o objeto associado deve atender.
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies,
+    -> { where "factory = 'Seattle'" }
+end
+```
+
+Você também pode definir condições por meio de um hash:
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies,
+    -> { where factory: 'Seattle' }
+end
+```
+
+Se você usar um estilo hash `where`, a criação de registros por meio dessa associação terá o escopo automaticamente definido usando o hash. Neste caso, usar `@parts.assemblies.create` ou `@parts.assemblies.build` criará montagens onde a coluna `factory` possui o valor "Seattle".
+
+
+##### extending
+
+O método `extending` especifica um módulo nomeado para estender o proxy de associação. As extensões de associação são discutidas em detalhes posteriormente neste guia .
+
+
+##### group
+O método `group` fornece um nome de atributo para agrupar o conjunto de resultados, usando uma cláusula `GROUP BY` no SQL do localizador.
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies, -> { group "factory" }
+end
+```
+
+
+##### includes
+
+Você pode usar o método `includes` para especificar associações de segunda ordem que devem ser carregadas antecipadamente quando essa associação for usada.
+
+
+##### limit
+
+O método `limit` permite restringir o número total de objetos que serão buscados por meio de uma associação.
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies,
+    -> { order("created_at DESC").limit(50) }
+end
+```
+
+
+##### offset
+
+O método `offset` permite especificar o deslocamento inicial para buscar objetos por meio de uma associação. Por exemplo, se você definir `offset(11)`, os primeiros 11 registros serão ignorados.
+
+
+##### order
+
+O método `order` determina a ordem em que os objetos associados serão recebidos (na sintaxe usada por uma cláusula `ORDER BY` SQL).
+
+```ruby
+class Parts < ApplicationRecord
+  has_and_belongs_to_many :assemblies,
+    -> { order "assembly_name ASC" }
+end
+```
+
+
+##### readonly
+
+Se você usar o método `readonly`, os objetos associados serão somente leitura quando recuperados por meio da associação.
+
+
+##### select
+
+O método `select` permite substituir a cláusula `SELECT` no SQL usada para recuperar dados sobre os objetos associados. Por padrão, o Rails recupera todas as colunas.
+
+
+##### distinct
+Use o distinctmétodo para remover duplicatas da coleção.
+
+
+#### Quando os objetos são salvos?
+
+Quando você atribui um objeto a uma associação `has_and_belongs_to_many`, esse objeto é salvo automaticamente (para atualizar a tabela de junção). Se você atribuir vários objetos em uma instrução, todos eles serão salvos.
+
+Se algum desses salvamentos falhar devido a erros de validação, a instrução de atribuição retornará `false` e a atribuição em si será cancelada.
+
+Se o objeto pai (aquele que declara a associação `has_and_belongs_to_many`) não for salvo (ou seja, `new_record?` retornar `true`), os objetos filhos não serão salvos quando forem adicionados. Todos os membros não salvos da associação serão salvos automaticamente quando o pai for salvo.
+
+Se você deseja atribuir um objeto a uma associação `has_and_belongs_to_many` sem salvar o objeto, use o método `collection.build`.
+
+
+### Retornos de chamada de associação
+
+Os retornos de chamada normais se conectam ao ciclo de vida dos objetos do Active Record, permitindo que você trabalhe com esses objetos em vários pontos. Por exemplo, você pode usar um retorno de chamada `:before_save` para fazer com que algo aconteça logo antes de um objeto ser salvo.
+
+Os retornos de chamada de associação são semelhantes aos retornos de chamada normais, mas são acionados por eventos no ciclo de vida de uma coleção. Existem quatro retornos de chamada de associação disponíveis:
+
+- `before_add`
+- `after_add`
+- `before_remove`
+- `after_remove`
+
+Você define retornos de chamada de associação adicionando opções à declaração de associação. Por exemplo:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, before_add: :check_credit_limit
+
+  def check_credit_limit(book)
+    # ...
+  end
+end
+```
+
+Leia mais sobre retornos de chamada de associação no Guia de retornos de chamada do Active Record
+
+
+### Extensões de Associação
+
+Você não está limitado à funcionalidade que o Rails constrói automaticamente em objetos proxy de associação. Você também pode estender esses objetos por meio de módulos anônimos, adicionando novos localizadores, criadores ou outros métodos. Por exemplo:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books do
+    def find_by_book_prefix(book_number)
+      find_by(category_id: book_number[0..2])
+    end
+  end
+end
+```
+
+Se você tiver uma extensão que deve ser compartilhada por muitas associações, poderá usar um módulo de extensão nomeado. Por exemplo:
+
+```ruby
+module FindRecentExtension
+  def find_recent
+    where("created_at > ?", 5.days.ago)
+  end
+end
+
+class Author < ApplicationRecord
+  has_many :books, -> { extending FindRecentExtension }
+end
+
+class Supplier < ApplicationRecord
+  has_many :deliveries, -> { extending FindRecentExtension }
+end
+```
+
+As extensões podem referir-se aos componentes internos do proxy de associação usando estes três atributos do acessador `proxy_association`:
+
+- `proxy_association.owner` retorna o objeto do qual a associação faz parte.
+- `proxy_association.reflection` retorna o objeto de reflexão que descreve a associação.
+- `proxy_association.target` retorna o objeto associado para belongs_toou has_oneou a coleção de objetos associados para has_manyou has_and_belongs_to_many.
+
+
+### Escopo da Associação usando o Proprietário da Associação
+
+O proprietário da associação pode ser passado como um argumento único para o bloco de escopo em situações em que você precisa de ainda mais controle sobre o escopo da associação. No entanto, como advertência, o pré-carregamento da associação não será mais possível.
+
+```ruby
+class Supplier < ApplicationRecord
+  has_one :account, ->(supplier) { where active: supplier.active? }
+end
+```
+
+
+## Herança de Tabela Única (STI)
+
+Às vezes, você pode querer compartilhar campos e comportamentos entre diferentes modelos. Digamos que temos modelos de carro, motocicleta e bicicleta. Queremos compartilhar os campos `color` e `price` e alguns métodos para todos eles, mas tendo algum comportamento específico para cada um, e controladores separados também.
+
+Primeiro, vamos gerar o modelo base do Veículo:
+
+```bash
+$ bin/rails generate model vehicle type:string color:string price:decimal{10.2}
+```
+
+Você notou que estamos adicionando um campo "tipo"? Como todos os modelos serão salvos em uma única tabela do banco de dados, o Rails salvará nesta coluna o nome do modelo que está sendo salvo. Em nosso exemplo, pode ser “Carro”, “Motocicleta” ou “Bicicleta”. O STI não funcionará sem um campo “tipo” na tabela.
+
+A seguir, geraremos o modelo `Car` que herda de `Vehicle`. Para isso, podemos utilizar a opção `--parent=PARENT`, que irá gerar um modelo que herda do pai especificado e sem migração equivalente (visto que a tabela já existe).
+
+Por exemplo, para gerar o modelo Carro:
+
+```bash
+$ bin/rails generate model car --parent=Vehicle
+```
+
+O modelo gerado ficará assim:
+
+```ruby
+class Car < Vehicle
+end
+```
+
+Isso significa que todos os comportamentos adicionados ao Veículo também estão disponíveis para o Carro, como associações, métodos públicos, etc.
+
+Criar um carro irá salvá-lo na tabela `vehicles` com "Carro" no campo `type`:
+
+```bash
+Car.create(color: 'Red', price: 10000)
+```
+
+irá gerar o seguinte SQL:
+
+```bash
+INSERT INTO "vehicles" ("type", "color", "price") VALUES ('Car', 'Red', 10000)
+```
+
+A consulta aos registros do carro pesquisará apenas veículos que sejam carros:
+
+```ruby
+Car.all
+```
+
+irá executar uma consulta como:
+
+```sql
+SELECT "vehicles".* FROM "vehicles" WHERE "vehicles"."type" IN ('Car')
+```
+
+
+## Tipos delegados
+
+`Single Table Inheritance (STI)` funciona melhor quando há pouca diferença entre as subclasses e seus atributos, mas inclui todos os atributos de todas as subclasses necessárias para criar uma única tabela.
+
+A desvantagem dessa abordagem é que ela resulta em um inchaço na tabela. Uma vez que incluirá até atributos específicos de uma subclasse que não são usados ​​por mais nada.
+
+No exemplo a seguir, existem dois modelos Active Record que herdam da mesma classe "Entry" que inclui o atributo `subject`.
+
+```ruby
+# Schema: entries[ id, type, subject, created_at, updated_at]
+class Entry < ApplicationRecord
+end
+
+class Comment < Entry
+end
+
+class Message < Entry
+end
+```
+
+Os tipos delegados resolvem esse problema, via `delegated_type`.
+
+Para usar tipos delegados, temos que modelar nossos dados de uma maneira específica. Os requisitos são os seguintes:
+
+- Existe uma superclasse que armazena atributos compartilhados entre todas as subclasses de sua tabela.
+- Cada subclasse deve herdar da superclasse e terá uma tabela separada para quaisquer atributos adicionais específicos dela.
+
+Isso elimina a necessidade de definir atributos em uma única tabela que são compartilhados involuntariamente entre todas as subclasses.
+
+Para aplicar isso ao nosso exemplo acima, precisamos regenerar nossos modelos. Primeiro, vamos gerar o modelo `Entry` base que atuará como nossa superclasse:
+
+```bash
+$ bin/rails generate model entry entryable_type:string entryable_id:integer
+```
+
+Em seguida, geraremos novos modelos `Message` e `Comment` para delegação:
+
+```bash
+$ bin/rails generate model message subject:string body:string
+$ bin/rails generate model comment content:string
+```
+
+Depois de executar os geradores, devemos acabar com modelos parecidos com estes:
+
+```ruby
+# Schema: entries[ id, entryable_type, entryable_id, created_at, updated_at ]
+class Entry < ApplicationRecord
+end
+
+# Schema: messages[ id, subject, body, created_at, updated_at ]
+class Message < ApplicationRecord
+end
+
+# Schema: comments[ id, content, created_at, updated_at ]
+class Comment < ApplicationRecord
+end
+```
+
+
+### Declarardelegated_type
+
+Primeiro, declare a `delegated_type` na superclasse `Entry`.
+
+```ruby
+class Entry < ApplicationRecord
+  delegated_type :entryable, types: %w[ Message Comment ], dependent: :destroy
+end
+```
+
+O parâmetro `entryable` especifica o campo a ser usado para delegação e inclui os tipos `Message` e `Comment` as classes delegadas.
+
+A classe `Entry` possui `entryable_type` e campos `entryable_id`. Este é o campo com os sufixos `_type`, `_id` adicionados ao nome `entryable` na definição `delegated_type` . `entryable_type` armazena o nome da subclasse do delegado e `entryable_id` armazena o ID do registro da subclasse do delegado.
+
+A seguir, devemos definir um módulo para implementar esses tipos delegados, declarando o parâmetro `as: :entryable` para a associação `has_one`.
+
+```ruby
+module Entryable
+  extend ActiveSupport::Concern
+
+  included do
+    has_one :entry, as: :entryable, touch: true
+  end
+end
+```
+
+E então inclua o módulo criado em sua subclasse.
+
+```ruby
+class Message < ApplicationRecord
+  include Entryable
+end
+
+class Comment < ApplicationRecord
+  include Entryable
+end
+```
+
+Com esta definição concluída, nosso delegador `Entry` agora fornece os seguintes métodos:
+
+| Método |	Retornar |
+| ------ | --------- |
+| `Entry#entryable_class` | Mensagem ou Comentário |
+| `Entry#entryable_name` |	"mensagem" ou "comentário" |
+| `Entry.messages` |	Entry.where(entryable_type: "Message") |
+| `Entry#message?` |	Retorna verdadeiro quandoentryable_type == "Message" |
+| `Entry#message` |	Retorna o registro da mensagem, quando entryable_type == "Message", caso contrárionil |
+| `Entry#message_id` |	Retorna entryable_id, quando entryable_type == "Message", caso contrárionil |
+| `Entry.comments` |	Entry.where(entryable_type: "Comment") |
+| `Entry#comment?` |	Retorna verdadeiro quandoentryable_type == "Comment" |
+| `Entry#comment` |	Retorna o registro do comentário, quando entryable_type == "Comment", caso contrárionil |
+| `Entry#comment_id` |	Retorna entryable_id, quando entryable_type == "Comment", caso contrárionil |
+
+
+### Criação de objetos
+
+Ao criar um novo objeto `Entry`, podemos especificar a subclasse `entryable` ao mesmo tempo.
+
+```bash
+Entry.create! entryable: Message.new(subject: "hello!")
+```
+
+
+### Adicionando mais delegação
+
+Podemos expandir nosso delegador `Entry` e aprimorá-lo ainda mais definindo `delegate` e usando polimorfismo nas subclasses. Por exemplo, para delegar o método `title` `Entry` para suas subclasses:
+
+```ruby
+class Entry < ApplicationRecord
+  delegated_type :entryable, types: %w[ Message Comment ]
+  delegate :title, to: :entryable
+end
+
+class Message < ApplicationRecord
+  include Entryable
+
+  def title
+    subject
+  end
+end
+
+class Comment < ApplicationRecord
+  include Entryable
+
+  def title
+    content.truncate(20)
+  end
+end
+```
