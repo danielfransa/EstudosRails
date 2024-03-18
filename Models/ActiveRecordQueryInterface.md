@@ -970,3 +970,710 @@ big_orders[0].total_price
 # Returns the total price for the first Order object
 ```
 
+## Condições predominantes
+
+
+### unscope
+
+Você pode especificar certas condições a serem removidas usando o método unscope. Por exemplo:
+
+```ruby
+Book.where('id > 100').limit(20).order('id desc').unscope(:order)
+```
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books WHERE id > 100 LIMIT 20
+
+-- Original query without `unscope`
+SELECT * FROM books WHERE id > 100 ORDER BY id desc LIMIT 20
+```
+
+Você também pode remover o escopo `where` de cláusulas específicas. Por exemplo, isso removerá `id` a condição da cláusula `where`:
+
+```ruby
+Book.where(id: 10, out_of_print: false).unscope(where: :id)
+# SELECT books.* FROM books WHERE out_of_print = 0
+```
+
+Uma relação usada `unscope` afetará qualquer relação na qual for mesclada:
+
+```ruby
+Book.order('id desc').merge(Book.unscope(:order))
+# SELECT books.* FROM books
+```
+
+
+### only
+
+Você também pode substituir condições usando o método `only`. Por exemplo:
+
+```ruby
+Book.where('id > 10').limit(20).order('id desc').only(:order, :where)
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books WHERE id > 10 ORDER BY id DESC
+
+-- Original query without `only`
+SELECT * FROM books WHERE id > 10 ORDER BY id DESC LIMIT 20
+```
+
+### reselect
+
+O método `reselect` substitui uma instrução select existente. Por exemplo:
+
+```ruby
+Book.select(:title, :isbn).reselect(:created_at)
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT books.created_at FROM books
+```
+
+Compare isso com o caso em que a cláusula `reselect` não é usada:
+
+```ruby
+Book.select(:title, :isbn).select(:created_at)
+```
+
+o SQL executado seria:
+
+```sql
+SELECT books.title, books.isbn, books.created_at FROM books
+```
+
+
+### reorder
+
+O método `reorder` substitui a ordem de escopo padrão. Por exemplo, se a definição da classe incluir isto:
+
+```ruby
+class Author < ApplicationRecord
+  has_many :books, -> { order(year_published: :desc) }
+end
+```
+
+E você executa isso:
+
+```ruby
+Author.find(10).books
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM authors WHERE id = 10 LIMIT 1
+SELECT * FROM books WHERE author_id = 10 ORDER BY year_published DESC
+```
+
+Você pode usar a cláusula `reorder` para especificar uma maneira diferente de ordenar os livros:
+
+```ruby
+Author.find(10).books.reorder('year_published ASC')
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM authors WHERE id = 10 LIMIT 1
+SELECT * FROM books WHERE author_id = 10 ORDER BY year_published ASC
+```
+
+### reverse_order
+
+O método `reverse_order` inverte a cláusula de ordem, se especificada.
+
+```ruby
+Book.where("author_id > 10").order(:year_published).reverse_order
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books WHERE author_id > 10 ORDER BY year_published DESC
+```
+
+Se nenhuma cláusula de ordem for especificada na consulta, as ordens `reverse_order` serão ordenadas pela chave primária na ordem inversa.
+
+```ruby
+Book.where("author_id > 10").reverse_order
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books WHERE author_id > 10 ORDER BY books.id DESC
+```
+
+O método reverse_order não aceita argumentos.
+
+
+### rewhere
+
+O método `rewhere` substitui uma condição nomeada existente `where`. Por exemplo:
+
+```ruby
+Book.where(out_of_print: true).rewhere(out_of_print: false)
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books WHERE out_of_print = 0
+```
+
+Se a cláusula `rewhere` não for usada, as cláusulas `where` serão combinadas com `AND`:
+
+```ruby
+Book.where(out_of_print: true).where(out_of_print: false)
+```
+
+o SQL executado seria:
+
+```sql
+SELECT * FROM books WHERE out_of_print = 1 AND out_of_print = 0
+```
+
+
+### regroup
+
+O método `regroup` substitui uma condição nomeada existente `group`. Por exemplo:
+
+```ruby
+Book.group(:author).regroup(:id)
+```
+
+O SQL que seria executado:
+
+```sql
+SELECT * FROM books GROUP BY id
+```
+
+Se a cláusula `regroup` não for usada, as cláusulas de grupo serão combinadas:
+
+```ruby
+Book.group(:author).group(:id)
+```
+
+o SQL executado seria:
+
+```sql
+SELECT * FROM books GROUP BY author, id
+```
+
+
+## Relação Nula
+
+O método `none` retorna uma relação encadeada sem registros. Quaisquer condições subsequentes encadeadas à relação retornada continuarão gerando relações vazias. Isso é útil em cenários em que você precisa de uma resposta encadeada para um método ou escopo que possa retornar zero resultados.
+
+```ruby
+Book.none # returns an empty Relation and fires no queries.
+```
+
+```ruby
+# The highlighted_reviews method below is expected to always return a Relation.
+Book.first.highlighted_reviews.average(:rating)
+# => Returns average rating of a book
+
+class Book
+  # Returns reviews if there are at least 5,
+  # else consider this as non-reviewed book
+  def highlighted_reviews
+    if reviews.count > 5
+      reviews
+    else
+      Review.none # Does not meet minimum threshold yet
+    end
+  end
+end
+```
+
+
+## Objetos somente leitura
+
+O Active Record fornece o método `readonly` em uma relação para proibir explicitamente a modificação de qualquer um dos objetos retornados. Qualquer tentativa de alterar um registro somente leitura não terá êxito, gerando uma exceção `ActiveRecord::ReadOnlyRecord`.
+
+```ruby
+customer = Customer.readonly.first
+customer.visits += 1
+customer.save # Raises an ActiveRecord::ReadOnlyRecord
+```
+
+Como `customer` está explicitamente definido como um objeto somente leitura, o código acima gerará uma exceção  `ActiveRecord::ReadOnlyRecord` ao chamar `customer.save` com um valor atualizado de visitas .
+
+
+## Bloqueio de registros para atualização
+
+O bloqueio é útil para evitar condições de corrida ao atualizar registros no banco de dados e garantir atualizações atômicas.
+
+O Active Record fornece dois mecanismos de bloqueio:
+
+- Bloqueio Otimista
+- Bloqueio Pessimista
+
+
+### Bloqueio Otimista
+
+O bloqueio otimista permite que vários usuários acessem o mesmo registro para edições e pressupõe um mínimo de conflitos com os dados. Isso é feito verificando se outro processo fez alterações em um registro desde que ele foi aberto. Uma exceção `ActiveRecord::StaleObjectError` será lançada se isso tiver ocorrido e a atualização for ignorada.
+
+**Coluna de bloqueio otimista** 
+
+Para usar o bloqueio otimista, a tabela precisa ter uma coluna chamada `lock_version` do tipo inteiro. Cada vez que o registro é atualizado, o Active Record incrementa a coluna `lock_version`. Se uma solicitação de atualização for feita com um valor no campo `lock_version` inferior ao que está atualmente na coluna `lock_version` do banco de dados, a solicitação de atualização falhará com uma extensão `ActiveRecord::StaleObjectError`.
+
+Por exemplo:
+```ruby
+c1 = Customer.find(1)
+c2 = Customer.find(1)
+
+c1.first_name = "Sandra"
+c1.save
+
+c2.first_name = "Michael"
+c2.save # Raises an ActiveRecord::StaleObjectError
+```
+
+Você será então responsável por lidar com o conflito resgatando a exceção e revertendo, mesclando ou aplicando a lógica de negócios necessária para resolver o conflito.
+
+Este comportamento pode ser desativado configurando `ActiveRecord::Base.lock_optimistically = false`.
+
+Para substituir o nome da coluna `lock_version`, `ActiveRecord::Base` fornece um atributo de classe chamado `locking_column`:
+
+```ruby
+class Customer < ApplicationRecord
+  self.locking_column = :lock_customer_column
+end
+```
+
+
+### Bloqueio Pessimista
+
+O bloqueio pessimista usa um mecanismo de bloqueio fornecido pelo banco de dados subjacente. Usar `lock` ao construir uma relação obtém um bloqueio exclusivo nas linhas selecionadas. As relações usando `lock` geralmente são agrupadas dentro de uma transação para evitar condições de conflito.
+
+Por exemplo:
+
+```ruby
+Book.transaction do
+  book = Book.lock.first
+  book.title = 'Algorithms, second edition'
+  book.save!
+end
+```
+
+A sessão acima produz o seguinte SQL para um backend MySQL:
+
+```sql
+SQL (0.2ms)   BEGIN
+Book Load (0.3ms)   SELECT * FROM books LIMIT 1 FOR UPDATE
+Book Update (0.4ms)   UPDATE books SET updated_at = '2009-02-07 18:05:56', title = 'Algorithms, second edition' WHERE id = 1
+SQL (0.8ms)   COMMIT
+```
+
+Você também pode passar SQL bruto para o método `lock` para permitir diferentes tipos de bloqueios. Por exemplo, o MySQL tem uma expressão chamada `LOCK IN SHARE MODE` onde você pode bloquear um registro, mas ainda permitir que outras consultas o leiam. Para especificar esta expressão basta passá-la como opção de bloqueio:
+
+```ruby
+Book.transaction do
+  book = Book.lock("LOCK IN SHARE MODE").find(1)
+  book.increment!(:views)
+end
+```
+
+![Active Record Query Interface - bloqueio bloqueio pessimista](/imagens/active_record_query_interface11.JPG)
+
+Se você já possui uma instância do seu modelo, você pode iniciar uma transação e adquirir o bloqueio de uma só vez usando o seguinte código:
+
+```ruby
+book = Book.first
+book.with_lock do
+  # This block is called within a transaction,
+  # book is already locked.
+  book.increment!(:views)
+end
+```
+
+
+## Unindo Tabelas
+
+O Active Record fornece dois métodos de localização para especificar cláusulas `JOIN` no SQL resultante: `joins` e `left_outer_joins`. Embora `joins` deva ser usado para consultas `INNER JOIN` personalizadas, `left_outer_joins` é usado para consultas usando `LEFT OUTER JOIN`.
+
+### joins
+
+Existem várias maneiras de usar o método `joins`.
+
+
+#### Usando um fragmento SQL de string
+
+Você pode simplesmente fornecer o SQL bruto especificando a cláusula `JOIN` para `joins`:
+
+```ruby
+Author.joins("INNER JOIN books ON books.author_id = authors.id AND books.out_of_print = FALSE")
+```
+
+Isso resultará no seguinte SQL:
+
+```sql
+SELECT authors.* FROM authors INNER JOIN books ON books.author_id = authors.id AND books.out_of_print = FALSE
+```
+
+#### Usando Array/Hash de Associações Nomeadas
+
+O Active Record permite usar os nomes das associações definidas no modelo como um atalho para especificar cláusulas `JOIN` para essas associações ao usar o método `joins`.
+
+Todos os itens a seguir produzirão as consultas de junção esperadas usando `INNER JOIN`:
+
+##### Aderir a uma única associação
+
+```ruby
+Book.joins(:reviews)
+```
+
+Isso produz:
+
+```sql
+SELECT books.* FROM books
+  INNER JOIN reviews ON reviews.book_id = books.id
+```
+
+Ou, em inglês: “retornar um objeto Livro para todos os livros com resenhas”. Observe que você verá livros duplicados se um livro tiver mais de uma resenha. Se você quiser livros exclusivos, você pode usar o arquivo Book.joins(:reviews).distinct.
+
+
+#### Aderindo a Múltiplas Associações
+
+```ruby
+Book.joins(:author, :reviews)
+```
+
+Isso produz:
+
+```sql
+SELECT books.* FROM books
+  INNER JOIN authors ON authors.id = books.author_id
+  INNER JOIN reviews ON reviews.book_id = books.id
+```
+
+Ou, em inglês: “devolver todos os livros com seu autor que tenham pelo menos uma resenha”. Observe novamente que os livros com várias resenhas aparecerão várias vezes.
+
+##### Unindo associações aninhadas (nível único)
+
+```ruby
+Book.joins(reviews: :customer)
+```
+
+Isso produz:
+
+```sql
+SELECT books.* FROM books
+  INNER JOIN reviews ON reviews.book_id = books.id
+  INNER JOIN customers ON customers.id = reviews.customer_id
+```
+
+Ou, em inglês: “devolver todos os livros que tiverem resenha de um cliente”.
+
+
+##### Unindo associações aninhadas (nível múltiplo)
+
+```ruby
+Author.joins(books: [{ reviews: { customer: :orders } }, :supplier])
+```
+
+Isso produz:
+
+```sql
+SELECT authors.* FROM authors
+  INNER JOIN books ON books.author_id = authors.id
+  INNER JOIN reviews ON reviews.book_id = books.id
+  INNER JOIN customers ON customers.id = reviews.customer_id
+  INNER JOIN orders ON orders.customer_id = customers.id
+INNER JOIN suppliers ON suppliers.id = books.supplier_id
+```
+
+Ou, em inglês: “devolver todos os autores que possuem livros com resenhas e que foram encomendados por um cliente, e os fornecedores desses livros”.
+
+
+#### Especificando condições nas tabelas unidas
+
+Você pode especificar condições nas tabelas unidas usando as condições regulares de Array e String . As condições de hash fornecem uma sintaxe especial para especificar condições para as tabelas unidas:
+
+```ruby
+time_range = (Time.now.midnight - 1.day)..Time.now.midnight
+Customer.joins(:orders).where('orders.created_at' => time_range).distinct
+```
+
+Isso irá encontrar todos os clientes que possuem pedidos que foram criados ontem, utilizando uma expressão `BETWEEN` SQL para comparar created_at.
+
+Uma sintaxe alternativa e mais limpa é aninhar as condições de hash:
+
+```ruby
+time_range = (Time.now.midnight - 1.day)..Time.now.midnight
+Customer.joins(:orders).where(orders: { created_at: time_range }).distinct
+```
+
+Para condições mais avançadas ou para reutilizar um escopo nomeado existente, `merge` pode ser usado. Primeiro, vamos adicionar um novo escopo nomeado ao modelo `Order`:
+
+```ruby
+class Order < ApplicationRecord
+  belongs_to :customer
+
+  scope :created_in_time_range, ->(time_range) {
+    where(created_at: time_range)
+  }
+end
+```
+
+Agora podemos usar `merge` para mesclar no escopo `created_in_time_range`:
+
+```ruby
+time_range = (Time.now.midnight - 1.day)..Time.now.midnight
+Customer.joins(:orders).merge(Order.created_in_time_range(time_range)).distinct
+```
+
+Isso encontrará todos os clientes que possuem pedidos criados ontem, novamente usando uma expressão `BETWEEN` SQL.
+
+
+### left_outer_joins
+
+Se você deseja selecionar um conjunto de registros, independentemente de terem ou não registros associados, você pode usar o método `left_outer_joins`.
+
+```ruby
+Customer.left_outer_joins(:reviews).distinct.select('customers.*, COUNT(reviews.*) AS reviews_count').group('customers.id')
+```
+
+O que produz:
+
+```sql
+SELECT DISTINCT customers.*, COUNT(reviews.*) AS reviews_count FROM customers
+LEFT OUTER JOIN reviews ON reviews.customer_id = customers.id GROUP BY customers.id
+```
+
+O que significa: "retornar a todos os clientes a contagem de comentários, independentemente de eles terem ou não comentários"
+
+
+### `where.associated` e `where.missing`
+
+Os métodos de consulta `associated` e `missing` permitem selecionar um conjunto de registros com base na presença ou ausência de uma associação.
+
+Usar `where.associated`:
+
+```ruby
+Customer.where.associated(:reviews)
+```
+
+Produz:
+
+```sql
+SELECT customers.* FROM customers
+INNER JOIN reviews ON reviews.customer_id = customers.id
+WHERE reviews.id IS NOT NULL
+```
+
+O que significa “devolver todos os clientes que fizeram pelo menos uma avaliação”.
+
+Usar `where.missing`:
+
+```ruby
+Customer.where.missing(:reviews)
+```
+
+Produz:
+
+```sql
+SELECT customers.* FROM customers
+LEFT OUTER JOIN reviews ON reviews.customer_id = customers.id
+WHERE reviews.id IS NULL
+```
+
+O que significa “devolver todos os clientes que não fizeram nenhuma avaliação”.
+
+
+##  Associações Eager Loading
+
+O carregamento rápido é o mecanismo para carregar os registros associados dos objetos retornados usando `Model.find` o mínimo de consultas possível.
+
+
+### Problema de consultas N + 1
+
+Considere o código a seguir, que encontra 10 livros e imprime o sobrenome de seus autores:
+
+```ruby
+books = Book.limit(10)
+
+books.each do |book|
+  puts book.author.last_name
+end
+```
+
+Este código parece bom à primeira vista. Mas o problema está no número total de consultas executadas. O código acima executa 1 (para encontrar 10 livros) + 10 (uma por cada livro para carregar o autor) = 11 consultas no total.
+
+
+#### Solução para o problema de consultas N + 1
+
+Active Record permite especificar antecipadamente todas as associações que serão carregadas.
+
+Os métodos são:
+
+- `includes`
+- `preload`
+- `eager_load`
+
+
+### includes
+
+Com `includes`, o Active Record garante que todas as associações especificadas sejam carregadas usando o número mínimo possível de consultas.
+
+Revisitando o caso acima usando o método `includes`, poderíamos reescrever `Book.limit(10)` para autores de carga antecipada:
+
+```ruby
+books = Book.includes(:author).limit(10)
+
+books.each do |book|
+  puts book.author.last_name
+end
+```
+
+O código acima executará apenas 2 consultas, em oposição às 11 consultas do caso original:
+
+```sql
+SELECT books.* FROM books LIMIT 10
+SELECT authors.* FROM authors
+  WHERE authors.id IN (1,2,3,4,5,6,7,8,9,10)
+```
+
+
+#### Carregamento Antecipado de Múltiplas Associações
+
+O Active Record permite carregar qualquer número de associações com uma única chamada `Model.find`  usando um array, hash ou um hash aninhado de array/hash com o método `includes`.
+
+##### Matriz de Múltiplas Associações
+
+```ruby
+Customer.includes(:orders, :reviews)
+```
+
+Isso carrega todos os clientes e os pedidos e avaliações associados a cada um.
+
+
+##### Hash de associações aninhadas
+
+```ruby
+Customer.includes(orders: { books: [:supplier, :author] }).find(1)
+```
+
+Isso encontrará o cliente com id 1 e carregará todos os pedidos associados a ele, os livros de todos os pedidos e o autor e fornecedor de cada um dos livros.
+
+
+#### Especificando Condições em Associações Eager Loaded
+
+Embora o Active Record permita especificar condições nas associações carregadas antecipadamente, como `joins`, a maneira recomendada é usar junções.
+
+No entanto, se você precisar fazer isso, poderá usar `where` normalmente.
+
+```ruby
+Author.includes(:books).where(books: { out_of_print: true })
+```
+Isso geraria uma consulta que contém um `LEFT OUTER JOIN` enquanto o smétodo `join` geraria uma consulta usando a função `INNER JOIN`.
+
+```sql
+SELECT authors.id AS t0_r0, ... books.updated_at AS t1_r5 FROM authors LEFT OUTER JOIN books ON books.author_id = authors.id WHERE (books.out_of_print = 1)
+```
+
+Se não houvesse condição where, isso geraria o conjunto normal de duas consultas.
+
+![Active Record Query Interface - eager_loading includes](/imagens/active_record_query_interface12.JPG)
+
+```ruby
+Author.includes(:books).where("books.out_of_print = true").references(:books)
+```
+
+Se, no caso desta consulta `includes`, não houvesse livros de nenhum autor, todos os autores ainda seriam carregados. Ao usar `joins` (um INNER JOIN), as condições de junção devem corresponder, caso contrário nenhum registro será retornado.
+
+![Active Record Query Interface - eager_loading includes](/imagens/active_record_query_interface13.JPG)
+
+
+### preload
+
+Com `preload`, o Active Record carrega cada associação especificada usando uma consulta por associação.
+
+Revisitando o problema das consultas N + 1, poderíamos reescrever `Book.limit(10)` para pré-carregar os autores:
+
+```ruby
+books = Book.preload(:author).limit(10)
+
+books.each do |book|
+  puts book.author.last_name
+end
+```
+
+O código acima executará apenas 2 consultas, em oposição às 11 consultas do caso original:
+
+```sql
+SELECT books.* FROM books LIMIT 10
+SELECT authors.* FROM authors
+  WHERE authors.id IN (1,2,3,4,5,6,7,8,9,10)
+```
+
+![Active Record Query Interface - eager_loading preload](/imagens/active_record_query_interface14.JPG)
+
+
+### eager_load
+
+Com `eager_load`, o Active Record carrega todas as associações especificadas usando um arquivo `LEFT OUTER JOIN`.
+
+Revisitando o caso em que ocorreu N + 1 usando o método `eager_load`, poderíamos reescrever `Book.limit(10)` para os autores:
+
+```ruby
+books = Book.eager_load(:author).limit(10)
+
+books.each do |book|
+  puts book.author.last_name
+end
+```
+
+O código acima executará apenas 2 consultas, em oposição às 11 consultas do caso original:
+
+```sql
+SELECT DISTINCT books.id FROM books LEFT OUTER JOIN authors ON authors.id = books.author_id LIMIT 10
+SELECT books.id AS t0_r0, books.last_name AS t0_r1, ...
+  FROM books LEFT OUTER JOIN authors ON authors.id = books.author_id
+  WHERE books.id IN (1,2,3,4,5,6,7,8,9,10)
+```
+
+![Active Record Query Interface - eager_loading eager_load](/imagens/active_record_query_interface15.JPG)
+
+
+### strict_loading
+
+O carregamento rápido pode evitar consultas N + 1, mas você ainda pode estar com preguiça de carregar algumas associações. Para garantir que nenhuma associação seja carregada lentamente, você pode ativar `strict_loading`.
+
+Ao habilitar o modo de carregamento estrito em uma relação, um `ActiveRecord::StrictLoadingViolationError` será gerado se o registro tentar carregar lentamente qualquer associação:
+
+```ruby
+user = User.strict_loading.first
+user.address.city # raises an ActiveRecord::StrictLoadingViolationError
+user.comments.to_a # raises an ActiveRecord::StrictLoadingViolationError
+```
+
+### strict_loading!
+
+Também podemos ativar o carregamento estrito no próprio registro chamando `strict_loading!`:
+
+```ruby
+user = User.first
+user.strict_loading!
+user.address.city # raises an ActiveRecord::StrictLoadingViolationError
+user.comments.to_a # raises an ActiveRecord::StrictLoadingViolationError
+```
+
+`strict_loading!` também leva um argumento `:mode`. Definir como `:n_plus_one_only` só gerará um erro se uma associação que levará a uma consulta N + 1 for carregada lentamente:
+
+```ruby
+user.strict_loading!(mode: :n_plus_one_only)
+user.address.city # => "Tatooine"
+user.comments.to_a # => [#<Comment:0x00...]
+user.comments.first.likes.to_a # raises an ActiveRecord::StrictLoadingViolationError
+```
+
+## Scopes
