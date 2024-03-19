@@ -1677,3 +1677,289 @@ user.comments.first.likes.to_a # raises an ActiveRecord::StrictLoadingViolationE
 ```
 
 ## Scopes
+
+O escopo permite especificar consultas comumente usadas que podem ser referenciadas como chamadas de método nos objetos ou modelos de associação. Com `where` esses escopos, você pode usar todos os métodos abordados anteriormente , como `joins` e `includes`. Todos os corpos de escopo devem retornar um `ActiveRecord::Relation` ou `nil` para permitir que outros métodos (como outros escopos) sejam chamados nele.
+
+Para definir um escopo simples, usamos o método `scope` dentro da classe, passando a consulta que gostaríamos de executar quando esse escopo for chamado:
+
+```ruby
+class Book < ApplicationRecord
+  scope :out_of_print, -> { where(out_of_print: true) }
+end
+```
+
+Para chamar esse escopo `out_of_print`, podemos chamá-lo na classe:
+
+```ruby
+irb> Book.out_of_print
+=> #<ActiveRecord::Relation> # all out of print books
+```
+
+Ou em uma associação composta por objetos `Book`:
+
+```ruby
+irb> author = Author.first
+irb> author.books.out_of_print
+=> #<ActiveRecord::Relation> # all out of print books by `author`
+```
+
+Os escopos também podem ser encadeados dentro dos escopos:
+
+```ruby
+class Book < ApplicationRecord
+  scope :out_of_print, -> { where(out_of_print: true) }
+  scope :out_of_print_and_expensive, -> { out_of_print.where("price > 500") }
+end
+```
+
+
+### Passando Argumentos
+
+Seu escopo pode receber argumentos:
+
+```ruby
+class Book < ApplicationRecord
+  scope :costs_more_than, ->(amount) { where("price > ?", amount) }
+end
+```
+
+Chame o escopo como se fosse um método de classe:
+
+```ruby
+irb> Book.costs_more_than(100.10)
+```
+
+No entanto, isso está apenas duplicando a funcionalidade que seria fornecida a você por um método de classe.
+
+```ruby
+class Book < ApplicationRecord
+  def self.costs_more_than(amount)
+    where("price > ?", amount)
+  end
+end
+```
+
+Estes métodos ainda estarão acessíveis nos objetos de associação:
+
+```ruby
+irb> author.books.costs_more_than(100.10)
+```
+
+
+### Usando Condicionais
+
+Seu escopo pode utilizar condicionais:
+
+```ruby
+class Order < ApplicationRecord
+  scope :created_before, ->(time) { where(created_at: ...time) if time.present? }
+end
+```
+
+Como os outros exemplos, este se comportará de forma semelhante a um método de classe.
+
+```ruby
+class Order < ApplicationRecord
+  def self.created_before(time)
+    where(created_at: ...time) if time.present?
+  end
+end
+```
+
+No entanto, há uma advertência importante: um escopo sempre retornará um objeto `ActiveRecord::Relation`, mesmo que a condicional seja avaliada como false, enquanto um método de classe retornará `nil`. Isso pode causar `NoMethodError` ao encadear métodos de classe com condicionais, se alguma das condicionais retornar false.
+
+
+### Aplicando um Escopo Padrão
+
+Se desejarmos que um escopo seja aplicado a todas as consultas do modelo, podemos usar o método default_scope dentro do próprio modelo.
+
+```ruby
+class Book < ApplicationRecord
+  default_scope { where(out_of_print: false) }
+end
+```
+
+Quando as consultas são executadas neste modelo, a consulta SQL agora será semelhante a esta:
+
+```sql
+SELECT * FROM books WHERE (out_of_print = false)
+```
+
+Se precisar fazer coisas mais complexas com um escopo padrão, você pode defini-lo alternativamente como um método de classe:
+
+```ruby
+class Book < ApplicationRecord
+  def self.default_scope
+    # Should return an ActiveRecord::Relation.
+  end
+end
+```
+
+![Active Record Query Interface - eager_loading eager_load](/imagens/active_record_query_interface16.JPG)
+
+```ruby
+class Book < ApplicationRecord
+  default_scope { where(out_of_print: false) }
+end
+```
+
+```ruby
+irb> Book.new
+=> #<Book id: nil, out_of_print: false>
+irb> Book.unscoped.new
+=> #<Book id: nil, out_of_print: nil>
+```
+
+Esteja ciente de que, quando fornecidos no formato Array, `default_scope` os argumentos de consulta não podem ser convertidos em uma atribuição `Hash` de atributo padrão. Por exemplo:
+
+```ruby
+class Book < ApplicationRecord
+  default_scope { where("out_of_print = ?", false) }
+end
+```
+
+```ruby
+irb> Book.new
+=> #<Book id: nil, out_of_print: nil>
+```
+
+### Fusão de Escopos
+
+Assim como `where` as cláusulas, os escopos são mesclados por meio de condições `AND`.
+
+```ruby
+class Book < ApplicationRecord
+  scope :in_print, -> { where(out_of_print: false) }
+  scope :out_of_print, -> { where(out_of_print: true) }
+
+  scope :recent, -> { where(year_published: 50.years.ago.year..) }
+  scope :old, -> { where(year_published: ...50.years.ago.year) }
+end
+```
+```sql
+irb> Book.out_of_print.old
+SELECT books.* FROM books WHERE books.out_of_print = 'true' AND books.year_published < 1969
+```
+
+Podemos misturar e combinar condições `scope`, `where` e o SQL final terá todas as condições unidas por `AND`.
+
+```sql
+irb> Book.in_print.where(price: ...100)
+SELECT books.* FROM books WHERE books.out_of_print = 'false' AND books.price < 100
+```
+
+Se quisermos que a última cláusula `where` vença, `merge` poderá ser usada.
+
+```ruby
+irb> Book.in_print.merge(Book.out_of_print)
+SELECT books.* FROM books WHERE books.out_of_print = true
+```
+
+Uma ressalva importante é que `default_scope` será acrescentado nas condições `scope` e `where`.
+
+```ruby
+class Book < ApplicationRecord
+  default_scope { where(year_published: 50.years.ago.year..) }
+
+  scope :in_print, -> { where(out_of_print: false) }
+  scope :out_of_print, -> { where(out_of_print: true) }
+end
+```
+
+```ruby
+irb> Book.all
+SELECT books.* FROM books WHERE (year_published >= 1969)
+
+irb> Book.in_print
+SELECT books.* FROM books WHERE (year_published >= 1969) AND books.out_of_print = false
+
+irb> Book.where('price > 50')
+SELECT books.* FROM books WHERE (year_published >= 1969) AND (price > 50)
+```
+
+Como você pode ver acima, `default_scope` está sendo mesclado nas condições `scope` and `where`.
+
+### Removendo todo o escopo
+
+Se desejarmos remover o escopo por qualquer motivo, podemos usar o unscopedmétodo. Isto é especialmente útil se a default_scopefor especificado no modelo e não deve ser aplicado para esta consulta específica.
+
+```ruby
+Book.unscoped.load
+```
+
+Este método remove todo o escopo e fará uma consulta normal na tabela.
+
+```ruby
+irb> Book.unscoped.all
+SELECT books.* FROM books
+
+irb> Book.where(out_of_print: true).unscoped.all
+SELECT books.* FROM books
+```
+
+`unscoped` também pode aceitar um bloqueio:
+
+```ruby
+irb> Book.unscoped { Book.out_of_print }
+SELECT books.* FROM books WHERE books.out_of_print = true
+```
+
+
+## Localizadores dinâmicos
+
+Para cada campo (também conhecido como atributo) definido em sua tabela, o Active Record fornece um método localizador. Se você tiver um campo chamado `first_name` em seu modelo `Customer`, por exemplo, você obtém o método de instância `find_by_first_name` gratuitamente no Active Record. Se você também tiver um campo `locked` no modelo `Customer`, também obterá um  método `find_by_locked`.
+
+Você pode especificar um ponto de exclamação (`!`) no final dos localizadores dinâmicos para que eles gerem um erro `ActiveRecord::RecordNotFound` se não retornarem nenhum registro, como `Customer.find_by_first_name!("Ryan")`
+
+Se quiser encontrar ambos por `first_name` e `orders_count`, você pode encadear esses localizadores simplesmente digitando "`and`" entre os campos. Por exemplo, `Customer.find_by_first_name_and_orders_count("Ryan", 5)`.
+
+
+## Enums
+
+Um enum permite definir uma matriz de valores para um atributo e consultá-los por nome. O valor real armazenado no banco de dados é um número inteiro que foi mapeado para um dos valores.
+
+Declarar um enum irá:
+
+- Crie escopos que possam ser usados ​​para localizar todos os objetos que possuem ou não um dos valores enum
+- Crie um método de instância que possa ser usado para determinar se um objeto possui um valor específico para a enumeração
+- Crie um método de instância que possa ser usado para alterar o valor enum de um objeto
+para todos os valores possíveis de um enum.
+
+Por exemplo, dada esta declaração `enum`:
+
+```ruby
+class Order < ApplicationRecord
+  enum :status, [:shipped, :being_packaged, :complete, :cancelled]
+end
+```
+
+Esses `escopos` são criados automaticamente e podem ser usados ​​para localizar todos os objetos com ou sem um valor específico para status:
+
+```ruby
+irb> Order.shipped
+=> #<ActiveRecord::Relation> # all orders with status == :shipped
+irb> Order.not_shipped
+=> #<ActiveRecord::Relation> # all orders with status != :shipped
+```
+
+Esses métodos de instância são criados automaticamente e consultam se o modelo possui esse valor para o enum `status`:
+
+```ruby
+irb> order = Order.shipped.first
+irb> order.shipped?
+=> true
+irb> order.complete?
+=> false
+```
+
+Esses métodos de instância são criados automaticamente e primeiro atualizarão o valor de `status` para o valor nomeado e, em seguida, consultarão se o status foi ou não definido com êxito para o valor:
+
+```ruby
+irb> order = Order.first
+irb> order.shipped!
+UPDATE "orders" SET "status" = ?, "updated_at" = ? WHERE "orders"."id" = ?  [["status", 0], ["updated_at", "2019-01-24 07:13:08.524320"], ["id", 1]]
+=> true
+```
+
+A documentação completa sobre enums pode ser encontrada [aqui](https://api.rubyonrails.org/v7.1.3.2/classes/ActiveRecord/Enum.html) .
+
