@@ -1963,3 +1963,494 @@ UPDATE "orders" SET "status" = ?, "updated_at" = ? WHERE "orders"."id" = ?  [["s
 
 A documentação completa sobre enums pode ser encontrada [aqui](https://api.rubyonrails.org/v7.1.3.2/classes/ActiveRecord/Enum.html) .
 
+
+## Compreendendo o encadeamento de métodos
+
+O padrão Active Record implementa Method Chaining , que nos permite usar vários métodos Active Record juntos de maneira simples e direta.
+
+Você pode encadear métodos em uma instrução quando o método anterior chamado retornar um `ActiveRecord::Relation`, como `all`, `where` e `joins`. Os métodos que retornam um único objeto (consulte a seção Recuperando uma seção de objeto único ) devem estar no final da instrução.
+
+Existem alguns exemplos abaixo. Este guia não cobrirá todas as possibilidades, apenas algumas como exemplos. Quando um método Active Record é chamado, a consulta não é gerada e enviada imediatamente ao banco de dados. A consulta é enviada somente quando os dados são realmente necessários. Portanto, cada exemplo abaixo gera uma única consulta.
+
+### Recuperando dados filtrados de múltiplas tabelas
+
+```ruby
+Customer
+  .select('customers.id, customers.last_name, reviews.body')
+  .joins(:reviews)
+  .where('reviews.created_at > ?', 1.week.ago)
+```
+O resultado deve ser algo assim:
+
+```sql
+SELECT customers.id, customers.last_name, reviews.body
+FROM customers
+INNER JOIN reviews
+  ON reviews.customer_id = customers.id
+WHERE (reviews.created_at > '2019-01-08')
+```
+
+### Recuperando dados específicos de múltiplas tabelas
+
+```ruby
+Book
+  .select('books.id, books.title, authors.first_name')
+  .joins(:author)
+  .find_by(title: 'Abstraction and Specification in Program Development')
+```
+
+O código acima deve gerar:
+
+```sql
+SELECT books.id, books.title, authors.first_name
+FROM books
+INNER JOIN authors
+  ON authors.id = books.author_id
+WHERE books.title = $1 [["title", "Abstraction and Specification in Program Development"]]
+LIMIT 1
+```
+
+![Active Record Query Interface - encadeamento](/imagens/active_record_query_interface17.JPG)
+
+
+## Encontre ou construa um novo objeto
+
+É comum que você precise encontrar um registro ou criá-lo caso ele não exista. Você pode fazer isso com os métodos `find_or_create_by` e `find_or_create_by!`.
+
+
+### find_or_create_by
+
+O método `find_or_create_by` verifica se existe um registro com os atributos especificados. Se não, então `create` é chamado. Vejamos um exemplo.
+
+Suponha que você queira encontrar um cliente chamado “Andy” e, se não houver, crie um. Você pode fazer isso executando:
+
+```ruby
+irb> Customer.find_or_create_by(first_name: 'Andy')
+=> #<Customer id: 5, first_name: "Andy", last_name: nil, title: nil, visits: 0, orders_count: nil, lock_version: 0, created_at: "2019-01-17 07:06:45", updated_at: "2019-01-17 07:06:45">
+```
+O SQL gerado por este método é assim:
+
+```sql
+SELECT * FROM customers WHERE (customers.first_name = 'Andy') LIMIT 1
+BEGIN
+INSERT INTO customers (created_at, first_name, locked, orders_count, updated_at) VALUES ('2011-08-30 05:22:57', 'Andy', 1, NULL, '2011-08-30 05:22:57')
+COMMIT
+```
+
+`find_or_create_by` retorna o registro que já existe ou o novo registro. No nosso caso, ainda não tínhamos um cliente chamado Andy, então o registro é criado e retornado.
+
+O novo registro pode não ser salvo no banco de dados; isso depende se as validações foram aprovadas ou não (assim como `create`).
+
+Suponha que desejamos definir o atributo 'locked' como `false` se estivermos criando um novo registro, mas não queremos incluí-lo na consulta. Portanto, queremos encontrar o cliente chamado “Andy”, ou se esse cliente não existir, criar um cliente chamado “Andy” que não esteja bloqueado.
+
+Podemos conseguir isso de duas maneiras. A primeira é usar `create_with`:
+
+```ruby
+Customer.create_with(locked: false).find_or_create_by(first_name: 'Andy')
+```
+
+A segunda maneira é usando um bloco:
+
+```ruby
+Customer.find_or_create_by(first_name: 'Andy') do |c|
+  c.locked = false
+end
+```
+
+O bloco só será executado se o cliente estiver sendo criado. Na segunda vez que executarmos este código, o bloco será ignorado.
+
+
+### find_or_create_by!
+
+Você também pode usar `find_or_create_by!` para gerar uma exceção se o novo registro for inválido. As validações não são abordadas neste guia, mas vamos supor por um momento que você adicione temporariamente
+
+```ruby
+validates :orders_count, presence: true
+```
+
+Ao seu modelo `Customer`. Se você tentar criar um novo `Customer` sem passar um `orders_count`, o registro será inválido e uma exceção será gerada:
+
+```ruby
+irb> Customer.find_or_create_by!(first_name: 'Andy')
+ActiveRecord::RecordInvalid: Validation failed: Orders count can't be blank
+```
+
+### find_or_initialize_by
+
+O método `find_or_initialize_by` funcionará exatamente como `find_or_create_by`, mas chamará `new` em vez de `create`. Isso significa que uma nova instância de modelo será criada na memória, mas não será salva no banco de dados. Continuando com o exemplo `find_or_create_by`, agora queremos o cliente chamado ‘Nina’:
+
+```ruby
+irb> nina = Customer.find_or_initialize_by(first_name: 'Nina')
+=> #<Customer id: nil, first_name: "Nina", orders_count: 0, locked: true, created_at: "2011-08-30 06:09:27", updated_at: "2011-08-30 06:09:27">
+
+irb> nina.persisted?
+=> false
+
+irb> nina.new_record?
+=> true
+```
+Como o objeto ainda não está armazenado no banco de dados, o SQL gerado fica assim:
+
+```sql
+SELECT * FROM customers WHERE (customers.first_name = 'Nina') LIMIT 1
+```
+
+Quando quiser salvá-lo no banco de dados, basta chamar save:
+
+```ruby
+irb> nina.save
+=> true
+```
+
+
+## Localização por SQL
+
+Se quiser usar seu próprio SQL para localizar registros em uma tabela, você pode usar `find_by_sql`. O método `find_by_sql` retornará uma matriz de objetos mesmo que a consulta subjacente retorne apenas um único registro. Por exemplo, você poderia executar esta consulta:
+
+```ruby
+irb> Customer.find_by_sql("SELECT * FROM customers INNER JOIN orders ON customers.id = orders.customer_id ORDER BY customers.created_at desc")
+=> [#<Customer id: 1, first_name: "Lucas" ...>, #<Customer id: 2, first_name: "Jan" ...>, ...]
+```
+
+`find_by_sql` fornece uma maneira simples de fazer chamadas personalizadas ao banco de dados e recuperar objetos instanciados.
+
+
+### select_all
+
+`find_by_sql` tem um parente próximo chamado `connection.select_all`. `select_all` recuperará objetos do banco de dados usando SQL personalizado, `find_by_sql` mas não os instanciará. Este método retornará uma instância da classe `ActiveRecord::Result` e chamar `to_a` nesse objeto retornará um array de hashes onde cada hash indica um registro.
+
+```ruby
+irb> Customer.connection.select_all("SELECT first_name, created_at FROM customers WHERE id = '1'").to_a
+=> [{"first_name"=>"Rafael", "created_at"=>"2012-11-10 23:23:45.281189"}, {"first_name"=>"Eileen", "created_at"=>"2013-12-09 11:22:35.221282"}]
+```
+
+
+### pluck
+
+`pluck` pode ser usado para escolher os valores das colunas nomeadas na relação atual. Ele aceita uma lista de nomes de colunas como argumento e retorna uma matriz de valores das colunas especificadas com o tipo de dados correspondente.
+
+```ruby
+irb> Book.where(out_of_print: true).pluck(:id)
+SELECT id FROM books WHERE out_of_print = true
+=> [1, 2, 3]
+
+irb> Order.distinct.pluck(:status)
+SELECT DISTINCT status FROM orders
+=> ["shipped", "being_packed", "cancelled"]
+
+irb> Customer.pluck(:id, :first_name)
+SELECT customers.id, customers.first_name FROM customers
+=> [[1, "David"], [2, "Fran"], [3, "Jose"]]
+```
+
+`pluck` torna possível substituir códigos como:
+
+```ruby
+Customer.select(:id).map { |c| c.id }
+# or
+Customer.select(:id).map(&:id)
+# or
+Customer.select(:id, :first_name).map { |c| [c.id, c.first_name] }
+```
+
+com:
+
+```ruby
+Customer.pluck(:id)
+# or
+Customer.pluck(:id, :first_name)
+```
+
+Ao contrário `select`, `pluck` converte diretamente o resultado de um banco de dados em `Array` Ruby, sem construir objetos `ActiveRecord`. Isso pode significar melhor desempenho para uma consulta grande ou executada com frequência. No entanto, quaisquer substituições de métodos de modelo não estarão disponíveis. Por exemplo:
+
+```ruby
+class Customer < ApplicationRecord
+  def name
+    "I am #{first_name}"
+  end
+end
+```
+
+```ruby
+irb> Customer.select(:first_name).map &:name
+=> ["I am David", "I am Jeremy", "I am Jose"]
+
+irb> Customer.pluck(:first_name)
+=> ["David", "Jeremy", "Jose"]
+```
+
+Você não está limitado a consultar campos de uma única tabela; também pode consultar várias tabelas.
+
+```ruby
+irb> Order.joins(:customer, :books).pluck("orders.created_at, customers.email, books.title")
+```
+
+Além disso, ao contrário de `select` outros escopos `Relation`, `pluck` desencadeia uma consulta imediata e, portanto, não pode ser encadeado com outros escopos, embora possa funcionar com escopos já construídos anteriormente:
+
+```ruby
+irb> Customer.pluck(:first_name).limit(1)
+NoMethodError: undefined method `limit' for #<Array:0x007ff34d3ad6d8>
+
+irb> Customer.limit(1).pluck(:first_name)
+=> ["David"]
+```
+
+![Active Record Query Interface - pluck](/imagens/active_record_query_interface18.JPG)
+
+```ruby
+irb> assoc = Customer.includes(:reviews)
+irb> assoc.pluck(:id)
+SELECT "customers"."id" FROM "customers" LEFT OUTER JOIN "reviews" ON "reviews"."id" = "customers"."review_id"
+```
+
+Uma maneira de evitar isso é incluir `unscope`:
+
+```ruby
+irb> assoc.unscope(:includes).pluck(:id)
+```
+
+
+### pick
+
+`pick` pode ser usado para escolher os valores das colunas nomeadas na relação atual. Ele aceita uma lista de nomes de colunas como argumento e retorna a primeira linha dos valores de coluna especificados com o tipo de dados correspondente. `pick` é uma abreviação de `relation.limit(1).pluck(*column_names).first`, que é útil principalmente quando você já tem uma relação limitada a uma linha.
+
+`pick` torna possível substituir códigos como:
+
+```ruby
+Customer.where(id: 1).pluck(:id).first
+```
+
+com:
+
+```ruby
+Customer.where(id: 1).pick(:id)
+```
+
+
+### ids
+
+`ids` pode ser usado para obter todos os IDs da relação usando a chave primária da tabela.
+
+```ruby
+irb> Customer.ids
+SELECT id FROM customers
+```
+
+```ruby
+class Customer < ApplicationRecord
+  self.primary_key = "customer_id"
+end
+```
+
+```ruby
+irb> Customer.ids
+SELECT customer_id FROM customers
+```
+
+
+## Existência de Objetos
+
+Se você simplesmente deseja verificar a existência do objeto, existe um método chamado `exists?`. Este método consultará o banco de dados usando a mesma consulta que `find`, mas em vez de retornar um objeto ou coleção de objetos ele retornará `true` ou `false`.
+
+```ruby
+Customer.exists?(1)
+```
+
+O método `exists?` também aceita vários valores, mas o problema é que ele retornará `true` se algum desses registros existir.
+
+```ruby
+Customer.exists?(id: [1, 2, 3])
+# or
+Customer.exists?(first_name: ['Jane', 'Sergei'])
+```
+
+É até possível usar `exists?` sem argumentos em um modelo ou relação.
+
+```ruby
+Customer.where(first_name: 'Ryan').exists?
+```
+
+O valor acima retorna `true` se houver pelo menos um cliente com o `first_name` 'Ryan' e `false` caso contrário.
+
+```ruby
+Customer.exists?
+```
+
+O caso acima retorna `false` se a tabela `customers` estiver vazia e `true` caso contrário.
+
+Você também pode usar `any?` e `many?` para verificar a existência de um modelo ou relação. `many?` usará SQL `count` para determinar se o item existe.
+
+```ruby
+# via a model
+Order.any?
+# SELECT 1 FROM orders LIMIT 1
+Order.many?
+# SELECT COUNT(*) FROM (SELECT 1 FROM orders LIMIT 2)
+
+# via a named scope
+Order.shipped.any?
+# SELECT 1 FROM orders WHERE orders.status = 0 LIMIT 1
+Order.shipped.many?
+# SELECT COUNT(*) FROM (SELECT 1 FROM orders WHERE orders.status = 0 LIMIT 2)
+
+# via a relation
+Book.where(out_of_print: true).any?
+Book.where(out_of_print: true).many?
+
+# via an association
+Customer.first.orders.any?
+Customer.first.orders.many?
+```
+
+
+## Cálculos
+Esta seção usa `count` como exemplo o método neste preâmbulo, mas as opções descritas se aplicam a todas as subseções.
+
+Todos os métodos de cálculo funcionam diretamente em um modelo:
+
+```ruby
+irb> Customer.count
+SELECT COUNT(*) FROM customers
+```
+
+Ou em uma relação:
+
+```ruby
+irb> Customer.where(first_name: 'Ryan').count
+SELECT COUNT(*) FROM customers WHERE (first_name = 'Ryan')
+```
+
+Você também pode usar vários métodos de localização em uma relação para realizar cálculos complexos:
+
+```ruby
+irb> Customer.includes("orders").where(first_name: 'Ryan', orders: { status: 'shipped' }).count
+```
+
+O que será executado:
+
+```sql
+SELECT COUNT(DISTINCT customers.id) FROM customers
+  LEFT OUTER JOIN orders ON orders.customer_id = customers.id
+  WHERE (customers.first_name = 'Ryan' AND orders.status = 0)
+```
+
+assumindo que a Ordem tenha enum status: [ :shipped, :being_packed, :cancelled ].
+
+
+### count
+
+Se você quiser ver quantos registros existem na tabela do seu modelo, você pode ligar `Customer.count` e isso retornará o número. Se quiser ser mais específico e encontrar todos os clientes com título presente no banco de dados você pode usar `Customer.count(:title)`.
+
+
+
+### average
+
+Se você quiser ver a média de um determinado número em uma de suas tabelas, você pode chamar o método `average` da classe relacionada à tabela. Esta chamada de método será semelhante a isto:
+
+```ruby
+Order.average("subtotal")
+```
+
+Isso retornará um número (possivelmente um número de ponto flutuante como 3,14159265) representando o valor médio no campo.
+
+
+
+### minimum
+
+Se você deseja encontrar o valor mínimo de um campo em sua tabela, você pode chamar o minimummétodo na classe relacionada à tabela. Esta chamada de método será semelhante a isto:
+
+```ruby
+Order.minimum("subtotal")
+```
+
+
+
+
+### maximum
+
+Se você deseja encontrar o valor máximo de um campo em sua tabela, você pode chamar o maximummétodo na classe relacionada à tabela. Esta chamada de método será semelhante a isto:
+
+```ruby
+Order.maximum("subtotal")
+```
+
+### sum
+
+Se quiser encontrar a soma de um campo para todos os registros da sua tabela, você pode chamar o summétodo na classe relacionada à tabela. Esta chamada de método será semelhante a isto:
+
+```ruby
+Order.sum("subtotal")
+```
+
+
+## Executando EXPLAIN
+
+Você pode executar uma relação `explain`. A saída EXPLAIN varia para cada banco de dados.
+
+Por exemplo, rodar
+
+```ruby
+Customer.where(id: 1).joins(:orders).explain
+```
+
+pode render
+
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface19.JPG)
+
+sob MySQL e MariaDB.
+
+O Active Record executa uma impressão bonita que emula o shell do banco de dados correspondente. Portanto, a mesma consulta executada com o adaptador PostgreSQL produziria
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface20.JPG)
+
+O carregamento rápido pode acionar mais de uma consulta oculta, e algumas consultas podem precisar dos resultados das anteriores. Por causa disso, `explain` realmente executa a consulta e depois solicita os planos de consulta. Por exemplo,
+
+```ruby
+Customer.where(id: 1).includes(:orders).explain
+```
+
+pode gerar isso para MySQL e MariaDB:
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface21.JPG)
+
+e pode gerar isso para PostgreSQL:
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface22.JPG)
+
+
+### Explicar Opções
+
+Para bancos de dados e adaptadores que os suportam (atualmente PostgreSQL e MySQL), opções podem ser passadas para fornecer análises mais profundas.
+
+Usando PostgreSQL, o seguinte:
+
+```ruby
+Customer.where(id: 1).joins(:orders).explain(:analyze, :verbose)
+```
+
+rendimentos:
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface23.JPG)
+
+Usando MySQL ou MariaDB, o seguinte:
+
+```ruby
+Customer.where(id: 1).joins(:orders).explain(:analyze)
+```
+
+rendimentos:
+
+![Active Record Query Interface - explain](/imagens/active_record_query_interface24.JPG)
+
+
+22.2 Interpretação EXPLICAR
+A interpretação do resultado de EXPLAIN está além do escopo deste guia. As seguintes dicas podem ser úteis:
+
+- SQLite3: [EXPLICAR O PLANO DE CONSULTA](https://www.sqlite.org/eqp.html)
+
+- MySQL: [EXPLAIN Formato de saída](https://dev.mysql.com/doc/refman/8.3/en/explain-output.html)
+
+- MariaDB: [EXPLICAR](https://mariadb.com/kb/en/mariadb/explain/)
+
+- PostgreSQL: [Usando EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)
