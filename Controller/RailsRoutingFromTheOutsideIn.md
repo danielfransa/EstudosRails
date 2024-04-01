@@ -595,3 +595,402 @@ Isso permitirá que o Rails reconheça caminhos como `/comments/new/preview` GET
 
 ![rails routing](/imagens/rails_routing10.JPG)
 
+
+## 3 rotas sem recursos
+
+Além do roteamento de recursos, o Rails possui suporte poderoso para rotear URLs arbitrárias para ações. Aqui, você não obtém grupos de rotas gerados automaticamente por roteamento engenhoso. Em vez disso, você configura cada rota separadamente em seu aplicativo.
+
+Embora você normalmente deva usar roteamento engenhoso, ainda há muitos lugares onde o roteamento mais simples é mais apropriado. Não há necessidade de tentar encaixar cada peça do seu aplicativo em uma estrutura engenhosa se isso não for uma boa opção.
+
+Em particular, o roteamento simples torna muito fácil mapear URLs legados para novas ações do Rails.
+
+### 3.1 Parâmetros vinculados
+
+Ao configurar uma rota regular, você fornece uma série de símbolos que o Rails mapeia para partes de uma solicitação HTTP recebida. Por exemplo, considere esta rota:
+
+```rb
+get 'photos(/:id)', to: 'photos#display'
+```
+
+Se uma solicitação recebida for `/photos/1` processada por esta rota (porque não corresponde a nenhuma rota anterior no arquivo), o resultado será invocar a ação `display` de `PhotosController` e disponibilizar o parâmetro final `"1"` como `params[:id]`. Esta rota também encaminhará a solicitação recebida de `/photos` para  `PhotosController#display`, já que `:id` é um parâmetro opcional, indicado entre parênteses.
+
+
+### 3.2 Segmentos Dinâmicos
+
+Você pode configurar quantos segmentos dinâmicos desejar em uma rota regular. Qualquer segmento estará disponível para a ação como parte do `params`. Se você configurar esta rota:
+
+```rb
+get 'photos/:id/:user_id', to: 'photos#show'
+```
+
+Um caminho de entrada `/photos/1/2` será despachado para a ação `show`  do arquivo `PhotosController`. `params[:id]` será `"1"` e `params[:user_id]` será `"2"`.
+
+![rails routing](/imagens/rails_routing11.JPG)
+
+
+### 3.3 Segmentos Estáticos
+
+Você pode especificar segmentos estáticos ao criar uma rota, não acrescentando dois pontos antes de um segmento:
+
+```rb
+get 'photos/:id/with_user/:user_id', to: 'photos#show'
+```
+
+Esta rota responderia a caminhos como `/photos/1/with_user/2`. Neste caso, `params` seria `{ controller: 'photos', action: 'show', id: '1', user_id: '2' }`.
+
+
+### 3.4 A string de consulta
+
+Também incluirá quaisquer `params` parâmetros da string de consulta. Por exemplo, com esta rota:
+
+```rb
+get 'photos/:id', to: 'photos#show'
+```
+
+Um caminho de entrada `/photos/1?user_id=2` será despachado para a ação `show` do controlador `Photos`. `params` vai ser `{ controller: 'photos', action: 'show', id: '1', user_id: '2' }`.
+
+
+### 3.5 Definindo Padrões
+
+Você pode definir padrões em uma rota fornecendo um hash para a opção `:defaults`. Isso se aplica até mesmo a parâmetros que você não especifica como segmentos dinâmicos. Por exemplo:
+
+```rb
+get 'photos/:id', to: 'photos#show', defaults: { format: 'jpg' }
+```
+
+Rails corresponderia `photos/12` à ação `show` de `PhotosController` e seria definido `params[:format]` como `"jpg"`.
+
+Você também pode usar um bloco `defaults` para definir os padrões para vários itens:
+
+```rb
+defaults format: :json do
+  resources :photos
+end
+```
+
+![rails routing](/imagens/rails_routing12.JPG)
+
+
+### 3.6 Nomeando Rotas
+
+Você pode especificar um nome para qualquer rota usando a opção `:as`:
+
+```rb
+get 'exit', to: 'sessions#destroy', as: :logout
+```
+
+Isso criará `logout_path` e `logout_url` como auxiliares de rota nomeados em seu aplicativo. A chamada `logout_path` retornará `/exit`
+
+Você também pode usar isso para substituir métodos de roteamento definidos por recursos, colocando rotas personalizadas antes de o recurso ser definido, assim:
+
+```rb
+get ':username', to: 'users#show', as: :user
+resources :users
+```
+
+Isso definirá um método `user_path` que estará disponível em controladores, auxiliares e visualizações que irão para uma rota como `/bob`. Dentro da ação `show` de `UsersController`, `params[:username]` conterá o nome de usuário do usuário. Altere a definição da rota `:usernamea` se não quiser que o nome do seu parâmetro seja `:username`.
+
+
+### 3.7 Restrições de verbos HTTP
+
+Em geral, você deve usar os métodos `get`, `post`, `put`, `patche` `delete` para restringir uma rota a um verbo específico. Você pode usar o método `match` com a opção `:via` para combinar vários verbos de uma vez:
+
+```rb
+match 'photos', to: 'photos#show', via: [:get, :post]
+```
+
+Você pode combinar todos os verbos com uma rota específica usando `via: :all`:
+
+```rb
+match 'photos', to: 'photos#show', via: :all
+```
+
+![rails routing](/imagens/rails_routing13.JPG)
+
+
+### 3.8 Restrições de segmento
+
+Você pode usar a opção `:constraints` para impor um formato a um segmento dinâmico:
+
+```rb
+get 'photos/:id', to: 'photos#show', constraints: { id: /[A-Z]\d{5}/ }
+```
+
+Esta rota corresponderia a caminhos como `/photos/A12345`, mas não `/photos/893`. Você pode expressar de forma mais sucinta a mesma rota desta forma:
+
+```rb
+get 'photos/:id', to: 'photos#show', id: /[A-Z]\d{5}/
+```
+
+`:constraints` aceita expressões regulares com a restrição de que âncoras regexp não podem ser usadas. Por exemplo, a seguinte rota não funcionará:
+
+```rb
+get '/:id', to: 'articles#show', constraints: { id: /^\d/ }
+```
+
+Entretanto, observe que você não precisa usar âncoras porque todas as rotas estão ancoradas no início e no final.
+
+Por exemplo, as rotas a seguir permitiriam que valores `articles` `to_param` como esse `1-hello-world` sempre comecem com um número e `users` com  `to_param` valores como esse `david` nunca comecem com um número para compartilhar o namespace raiz:
+
+```rb
+get '/:id', to: 'articles#show', constraints: { id: /\d.+/ }
+get '/:username', to: 'users#show'
+```
+
+
+### 3.9 Restrições Baseadas em Solicitações
+
+Você também pode restringir uma rota com base em qualquer método no objeto Request que retorne um arquivo `String`.
+
+Você especifica uma restrição baseada em solicitação da mesma forma que especifica uma restrição de segmento:
+
+```rb
+get 'photos', to: 'photos#index', constraints: { subdomain: 'admin' }
+```
+
+Você também pode especificar restrições usando um bloco `constraints`:
+
+```rb
+namespace :admin do
+  constraints subdomain: 'admin' do
+    resources :photos
+  end
+end
+```
+
+![rails routing](/imagens/rails_routing14.JPG)
+
+
+### 3.10 Restrições Avançadas
+
+Se você tiver uma restrição mais avançada, poderá fornecer um objeto que responda ao `matches?` que o Rails deve usar. Digamos que você queira rotear todos os usuários de uma lista restrita para o arquivo `RestrictedListController`. Você poderia fazer:
+
+```rb
+class RestrictedListConstraint
+  def initialize
+    @ips = RestrictedList.retrieve_ips
+  end
+
+  def matches?(request)
+    @ips.include?(request.remote_ip)
+  end
+end
+
+Rails.application.routes.draw do
+  get '*path', to: 'restricted_list#index',
+    constraints: RestrictedListConstraint.new
+end
+```
+
+Você também pode especificar restrições como lambda:
+
+```rb
+Rails.application.routes.draw do
+  get '*path', to: 'restricted_list#index',
+    constraints: lambda { |request| RestrictedList.retrieve_ips.include?(request.remote_ip) }
+end
+```
+
+Tanto o método `matches?` quanto o lambda obtêm o objeto `request` como argumento.
+
+#### 3.10.1 Restrições em um Formulário de Bloco
+
+Você pode especificar restrições em formato de bloco. Isso é útil quando você precisa aplicar a mesma regra a diversas rotas. Por exemplo:
+
+```rb
+class RestrictedListConstraint
+  # ...Same as the example above
+end
+
+Rails.application.routes.draw do
+  constraints(RestrictedListConstraint.new) do
+    get '*path', to: 'restricted_list#index'
+    get '*other-path', to: 'other_restricted_list#index'
+  end
+end
+```
+
+Você também pode usar um `lambda`:
+
+```rb
+Rails.application.routes.draw do
+  constraints(lambda { |request| RestrictedList.retrieve_ips.include?(request.remote_ip) }) do
+    get '*path', to: 'restricted_list#index'
+    get '*other-path', to: 'other_restricted_list#index'
+  end
+end
+```
+
+
+### 3.11 Globbing de rota e segmentos curinga
+
+Globbing de rota é uma forma de especificar que um parâmetro específico deve corresponder a todas as partes restantes de uma rota. Por exemplo:
+
+```rb
+get 'photos/*other', to: 'photos#unknown'
+```
+
+Esta rota corresponderia `photos/12a` or `/photos/long/path/to/12`, definida `params[:other]` como `"12"` ou `"long/path/to/12"`. Os segmentos prefixados com uma estrela são chamados de "segmentos curinga".
+
+Os segmentos curinga podem ocorrer em qualquer lugar de uma rota. Por exemplo:
+
+```rb
+get 'books/*section/:title', to: 'books#show'
+```
+
+corresponderia `books/some/section/last-words-a-memoir` um `params[:section]` igual `'some/section'` e `params[:title]` igual `'last-words-a-memoir'`.
+
+Tecnicamente, uma rota pode ter até mais de um segmento curinga. O matcher atribui segmentos a parâmetros de forma intuitiva. Por exemplo:
+
+```rb
+get '*a/foo/*b', to: 'test#index'
+```
+
+corresponderia `zoo/woo/foo/bar/baz` um `params[:a]` igual `'zoo/woo'` e  `params[:b]` igual à `'bar/baz'`.
+
+![rails routing](/imagens/rails_routing15.JPG)
+
+```rb
+get '*pages', to: 'pages#show', format: false
+```
+
+![rails routing](/imagens/rails_routing16.JPG)
+
+```rb
+get '*pages', to: 'pages#show', format: true
+```
+
+
+## 3.12 Redirecionamento
+
+Você pode redirecionar qualquer caminho para outro caminho usando o auxiliar `redirect` em seu roteador:
+
+```rb
+get '/stories', to: redirect('/articles')
+```
+
+Você também pode reutilizar segmentos dinâmicos da correspondência no caminho para redirecionar:
+
+```rb
+get '/stories/:name', to: redirect('/articles/%{name}')
+```
+
+Você também pode fornecer um bloco para `redirect`, que recebe os parâmetros do caminho simbolizado e o objeto de solicitação:
+
+```rb
+get '/stories/:name', to: redirect { |path_params, req| "/articles/#{path_params[:name].pluralize}" }
+get '/stories', to: redirect { |path_params, req| "/articles/#{req.subdomain}" }
+```
+
+Observe que o redirecionamento padrão é um redirecionamento 301 "Movido permanentemente". Lembre-se de que alguns navegadores da web ou servidores proxy armazenarão esse tipo de redirecionamento em cache, tornando a página antiga inacessível. Você pode usar a opção `:status` para alterar o status da resposta:
+
+```rb
+get '/stories/:name', to: redirect('/articles/%{name}', status: 302)
+```
+
+Em todos esses casos, se você não fornecer o host principal (`http://www.example.com`), o Rails pegará esses detalhes da solicitação atual.
+
+
+### 3.13 Roteamento para aplicações em rack
+
+Em vez de uma String como `'articles#index'`, que corresponde à ação `index` no `ArticlesController`, você pode especificar qualquer [aplicativo Rack](https://guides.rubyonrails.org/rails_on_rack.html) como ponto final para um matcher:
+
+```rb
+match '/application.js', to: MyRackApp, via: :all
+```
+
+Enquanto `MyRackApp` responder `call` e retornar um `[status, headers, body]`, o roteador não saberá a diferença entre o aplicativo Rack e uma ação. Este é um uso apropriado de `via: :all`, pois você desejará permitir que seu aplicativo Rack manipule todos os verbos conforme considerar apropriado.
+
+![rails routing](/imagens/rails_routing17.JPG)
+
+Se você especificar um aplicativo Rack como ponto final para um matcher, lembre-se de que a rota permanecerá inalterada no aplicativo receptor. Com a rota a seguir, seu aplicativo Rack deve esperar que a rota seja `/admin`:
+
+```rb
+match '/admin', to: AdminApp, via: :all
+```
+
+Se você preferir que seu aplicativo Rack receba solicitações no caminho raiz, use `mount`:
+
+```rb
+mount AdminApp, at: '/admin'
+```
+
+
+### 3.14 Usandoroot
+
+Você pode especificar para onde o Rails deve rotear `'/'` com o método `root`:
+
+```rb
+root to: 'pages#main'
+root 'pages#main' # shortcut for the above
+```
+
+Você deve colocar a `root` rota no topo do arquivo, pois é a rota mais popular e deve ser correspondida primeiro.
+
+![rails routing](/imagens/rails_routing18.JPG)
+
+Você também pode usar root dentro de namespaces e escopos. Por exemplo:
+
+```rb
+namespace :admin do
+  root to: "admin#index"
+end
+
+root to: "home#index"
+```
+
+
+### 3.15 Rotas de caracteres Unicode
+
+Você pode especificar rotas de caracteres Unicode diretamente. Por exemplo:
+
+```rb
+get 'こんにちは', to: 'welcome#index'
+```
+
+
+### 3.16 Rotas Diretas
+
+Você pode criar auxiliares de URL personalizados diretamente chamando `direct`. Por exemplo:
+
+```rb
+direct :homepage do
+  "https://rubyonrails.org"
+end
+
+# >> homepage_url
+# => "https://rubyonrails.org"
+```
+
+O valor de retorno do bloco deve ser um argumento válido para o método `url_for`. Portanto, você pode passar uma URL de string válida, Hash, Array, uma instância do Active Model ou uma classe do Active Model.
+
+```rb
+direct :commentable do |model|
+  [ model, anchor: model.dom_id ]
+end
+
+direct :main do
+  { controller: 'pages', action: 'index', subdomain: 'www' }
+end
+```
+
+
+### 3.17 Usando resolve
+
+O método `resolve` permite customizar o mapeamento polimórfico de modelos. Por exemplo:
+
+```rb
+resource :basket
+
+resolve("Basket") { [:basket] }
+```
+
+```rb
+<%= form_with model: @basket do |form| %>
+  <!-- basket form -->
+<% end %>
+```
+
+
+Isso gerará o URL singular `/basket` em vez do arquivo `/baskets/:id`.
+
