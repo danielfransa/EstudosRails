@@ -994,3 +994,265 @@ resolve("Basket") { [:basket] }
 
 Isso gerará o URL singular `/basket` em vez do arquivo `/baskets/:id`.
 
+
+## 4 Personalizando Rotas com Recursos
+
+Embora as rotas padrão e os auxiliares gerados por `resources` geralmente sejam úteis para você, você pode querer personalizá-los de alguma forma. Rails permite que você personalize praticamente qualquer parte genérica dos ajudantes engenhosos.
+
+### 4.1 Especificando um controlador para usar
+
+A opção `:controller` permite especificar explicitamente um controlador a ser usado para o recurso. Por exemplo:
+
+```rb
+resources :photos, controller: 'images'
+```
+
+reconhecerá os caminhos de entrada começando com `/photos` mas roteará para o controlador `Images`:
+
+
+| HTTP Verb	| Path	| Controller#Action	| Named Route Helper |
+| --- | --- | --- | --- |
+| GET	| /photos	| images#index	| photos_path |
+| GET	| /photos/new	| images#new	| new_photo_path |
+| POST	| /photos	| images#create	| photos_path |
+| GET	| /photos/:id	| images#show	| photo_path(:id) |
+| GET	| /photos/:id/edit	| images#edit	| edit_photo_path(:id) |
+| PATCH/PUT	| /photos/:id	| images#update	| photo_path(:id) |
+| DELETE	| /photos/:id	| images#destroy	| photo_path(:id) |
+
+![rails routing](/imagens/rails_routing19.JPG)
+
+Para controladores com namespace você pode usar a notação de diretório. Por exemplo:
+
+```rb
+resources :user_permissions, controller: 'admin/user_permissions'
+```
+Isso será roteado para o controlador `Admin::UserPermissions`.
+
+![rails routing](/imagens/rails_routing20.JPG)
+
+
+### 4.2 Especificando Restrições
+
+Você pode usar a opção  `:constraints` para especificar um formato necessário no arquivo `id`. Por exemplo:
+
+```rb
+resources :photos, constraints: { id: /[A-Z][A-Z][0-9]+/ }
+```
+
+Esta declaração restringe o parâmetro `:id` para corresponder à expressão regular fornecida. Portanto, neste caso, o roteador não corresponderia mais `/photos/1` a esta rota. Em vez disso, combinaria `/photos/RR27`.
+
+Você pode especificar uma única restrição para aplicar a diversas rotas usando o formulário de bloco:
+
+```rb
+constraints(id: /[A-Z][A-Z][0-9]+/) do
+  resources :photos
+  resources :accounts
+end
+```
+
+![rails routing](/imagens/rails_routing21.JPG)
+
+
+### 4.3 Substituindo os auxiliares de rota nomeados
+
+
+A opção `:as` permite substituir a nomenclatura normal dos auxiliares de rota nomeados. Por exemplo:
+
+```rb
+resources :photos, as: 'images'
+```
+
+reconhecerá os caminhos de entrada começando com `/photos` e encaminhará as solicitações para `PhotosController`, mas usará o valor da opção `:as` para nomear os auxiliares.
+
+
+| HTTP Verb	| Path	| Controller#Action	| Named Route Helper |
+| --- | --- | --- | --- |
+| GET	| /photos	| photos#index	| images_path |
+| GET	| /photos/new	| photos#new	| new_image_path |
+| POST	| /photos	| photos#create	| images_path |
+| GET	| /photos/:id	| photos#show	| image_path(:id) |
+| GET	| /photos/:id/edit	| photos#edit	| edit_image_path(:id) |
+| PATCH/PUT	| /photos/:id	| photos#update	| image_path(:id) |
+| DELETE	| /photos/:id	| photos#destroy	| image_path(:id) |
+
+
+### 4.4 Substituindo os segmentos `new` e `edit`
+
+A opção `:path_names` permite substituir os segmentos gerados automaticamente `new` e `edit` nos caminhos:
+
+```rb
+resources :photos, path_names: { new: 'make', edit: 'change' }
+```
+
+Isso faria com que o roteamento reconhecesse caminhos como:
+
+```rb
+/photos/make
+/photos/1/change
+```
+
+![rails routing](/imagens/rails_routing22.JPG)
+
+```rb
+scope path_names: { new: 'make' } do
+  # rest of your routes
+end
+```
+
+
+### 4.5 Prefixando os auxiliares de rota nomeados
+
+Você pode usar a opção `:as` de prefixar os auxiliares de rota nomeados que o Rails gera para uma rota. Use esta opção para evitar colisões de nomes entre rotas usando um escopo de caminho. Por exemplo:
+
+```rb
+scope 'admin' do
+  resources :photos, as: 'admin_photos'
+end
+
+resources :photos
+```
+
+Isso altera os auxiliares de rota de `/admin/photos`, `photos_path`, `new_photos_path` etc. para `admin_photos_path`, `new_admin_photo_path`, etc. Sem a adição de `as: 'admin_photos` no escopo resources
+`:photos`, os sem escopo `resources :photos` não terão nenhum auxiliar de rota.
+
+Para prefixar um grupo de auxiliares de rota, use `:as` with `scope`:
+
+```rb
+scope 'admin', as: 'admin' do
+  resources :photos, :accounts
+end
+
+resources :photos, :accounts
+```
+
+Assim como antes, isso altera os auxiliares `/admin` de recursos com escopo definido para `admin_photos_path` e `admin_accounts_path` e permite que os recursos sem escopo usem `photos_path` e `accounts_path`.
+
+![rails routing](/imagens/rails_routing23.JPG)
+
+
+#### 4.5.1 Escopos Paramétricos
+
+Você pode prefixar rotas com um parâmetro nomeado:
+
+```rb
+scope ':account_id', as: 'account', constraints: { account_id: /\d+/ } do
+  resources :articles
+end
+```
+
+Isso fornecerá caminhos como `/1/articles/9` e permitirá que você faça referência à `account_id` parte do caminho como `params[:account_id]` em controladores, auxiliares e visualizações.
+
+Ele também gerará auxiliares de caminho e URL prefixados com `account_`, para os quais você poderá passar seus objetos conforme esperado:
+
+```rb
+account_article_path(@account, @article) # => /1/article/9
+url_for([@account, @article])            # => /1/article/9
+form_with(model: [@account, @article])   # => <form action="/1/article/9" ...>
+```
+
+Estamos usando uma restrição para limitar o escopo para corresponder apenas a strings semelhantes a ID. Você pode alterar a restrição para atender às suas necessidades ou omiti-la totalmente. A opção `:as` também não é estritamente necessária, mas sem ela, o Rails irá gerar um erro ao avaliar `url_for([@account, @article])` ou outros auxiliares que dependem de `url_for`, como `form_with`.
+
+
+### 4.6 Restringindo as Rotas Criadas
+
+Por padrão, Rails cria rotas para as sete ações padrão ( `index`, `show`, `new`, `create`, `edit`, `update` e `destroy`) para cada rota RESTful em sua aplicação. Você pode usar as opções `:only` e `:except` para ajustar esse comportamento. A opção `:only` diz ao Rails para criar apenas as rotas especificadas:
+
+```rb
+resources :photos, only: [:index, :show]
+```
+
+Agora, uma solicitação `GET` para `/photos` seria bem-sucedida, mas uma solicitação `POST` para `/photos` (que normalmente seria roteada para a ação `create`) falhará.
+
+A opção `:except` especifica uma rota ou lista de rotas que o Rails não deve criar:
+
+```rb
+resources :photos, except: :destroy
+```
+
+Neste caso, Rails criará todas as rotas normais, exceto a rota para `destroy` (uma solicitação `DELETE` para `/photos/:id`, falhará).
+
+
+![rails routing](/imagens/rails_routing24.JPG)
+
+
+### 4.7 Caminhos traduzidos
+
+Usando scope, podemos alterar os nomes dos caminhos gerados por resources:
+
+```rb
+scope(path_names: { new: 'neu', edit: 'bearbeiten' }) do
+  resources :categories, path: 'kategorien'
+end
+```
+
+Rails agora cria rotas para o `CategoriesController`.
+
+| HTTP Verb	| Path	| Controller#Action	| Named Route Helper |
+| --- | --- | --- | --- |
+| GET	| /kategorien	| categories#index	| categories_path |
+| GET	| /kategorien/neu	| categories#new	| new_category_path |
+| POST	| /kategorien	| categories#create	| categories_path |
+| GET	| /kategorien/:id	| categories#show	| category_path(:id) |
+| GET	| /kategorien/:id/bearbeiten	| categories#edit	| edit_category_path(:id) |
+| PATCH/PUT	| /kategorien/:id	| categories#update	| category_path(:id) |
+| DELETE	| /kategorien/:id	| categories#destroy	| category_path(:id) |
+
+
+### 4.8 Substituindo a Forma Singular
+
+Se quiser substituir a forma singular de um recurso, você deve adicionar regras adicionais ao infletor por meio de `inflections`:
+
+```rb
+ActiveSupport::Inflector.inflections do |inflect|
+  inflect.irregular 'tooth', 'teeth'
+end
+```
+
+
+### 4.9 Usando recursos aninhados `:as`
+
+A opção `:as` substitui o nome gerado automaticamente para o recurso em auxiliares de rota aninhados. Por exemplo:
+
+```rb
+resources :magazines do
+  resources :ads, as: 'periodical_ads'
+end
+```
+
+Isso criará auxiliares de roteamento como `magazine_periodical_ads_url` e `edit_magazine_periodical_ad_path`.
+
+
+### 4.10 Substituindo Parâmetros de Rota Nomeada
+
+A opção `:param` substitui o identificador de recurso padrão `:id`(nome do segmento dinâmico usado para gerar as rotas). Você pode acessar esse segmento do seu controlador usando `params[<:param>]`.
+
+```rb
+resources :videos, param: :identifier
+```
+
+```rb
+    videos GET  /videos(.:format)                  videos#index
+           POST /videos(.:format)                  videos#create
+ new_video GET  /videos/new(.:format)              videos#new
+edit_video GET  /videos/:identifier/edit(.:format) videos#edit
+```
+
+```rb
+Video.find_by(identifier: params[:identifier])
+```
+
+Você pode substituir o modelo associado `ActiveRecord::Base#to_param`  para construir uma URL:
+
+```rb
+class Video < ApplicationRecord
+  def to_param
+    identifier
+  end
+end
+```
+
+```rb
+video = Video.find_by(identifier: "Roman-Holiday")
+edit_video_path(video) # => "/videos/Roman-Holiday/edit"
+```
