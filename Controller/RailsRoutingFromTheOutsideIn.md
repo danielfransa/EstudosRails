@@ -1256,3 +1256,79 @@ end
 video = Video.find_by(identifier: "Roman-Holiday")
 edit_video_path(video) # => "/videos/Roman-Holiday/edit"
 ```
+
+
+## 5 Dividindo arquivos de rota muito grandes em vários arquivos pequenos
+
+Se você trabalha em um aplicativo grande com milhares de rotas, um único arquivo `config/routes.rb` pode se tornar complicado e difícil de ler.
+
+Rails oferece uma maneira de dividir um único arquivo `routes.rb` gigantesco em vários arquivos pequenos usando a macro `draw`.
+
+Você poderia ter uma rota `admin.rb` que contenha todas as rotas para a área administrativa, outro arquivo `api.rb` para recursos relacionados à API, etc.
+
+```rb
+# config/routes.rb
+
+Rails.application.routes.draw do
+  get 'foo', to: 'foo#bar'
+
+  draw(:admin) # Will load another route file located in `config/routes/admin.rb`
+end
+```
+
+```rb
+# config/routes/admin.rb
+
+namespace :admin do
+  resources :comments
+end
+```
+Chamar `draw(:admin)` dentro do `Rails.application.routes.draw` próprio bloco tentará carregar um arquivo de rota que tenha o mesmo nome do argumento fornecido (`admin.rb` neste exemplo). O arquivo precisa estar localizado dentro do diretório `config/routes` ou qualquer subdiretório (ou seja, `config/routes/admin.rb` ou `config/routes/external/admin.rb`).
+
+Você pode usar o DSL de roteamento normal dentro do arquivo `admin.rb` de roteamento, mas não deve cercá-lo com o `Rails.application.routes.draw` bloco como fez no arquivo `config/routes.rb` principal.
+
+### 5.1 Não use este recurso a menos que você realmente precise dele
+
+Ter vários arquivos de roteamento dificulta a descoberta e a compreensão. Para a maioria dos aplicativos - mesmo aqueles com algumas centenas de rotas - é mais fácil para os desenvolvedores ter um único arquivo de roteamento. O DSL de roteamento Rails já oferece uma maneira de quebrar rotas de forma organizada com `namespace` e `scope`.
+
+
+## 6 Rotas de inspeção e teste
+
+Rails oferece facilidades para inspecionar e testar suas rotas.
+
+
+### 6.1 Listando Rotas Existentes
+
+Para obter uma lista completa das rotas disponíveis em sua aplicação, visite `http://localhost:3000/rails/info/routes` em seu navegador enquanto seu servidor está rodando no ambiente de desenvolvimento . Você também pode executar o comando `bin/rails routes`  em seu terminal para produzir a mesma saída.
+
+Ambos os métodos listarão todas as suas rotas, na mesma ordem em que aparecem no arquivo `config/routes.rb`. Para cada rota, você verá:
+
+- O nome da rota (se houver)
+- O verbo HTTP usado (se a rota não responder a todos os verbos)
+- O padrão de URL para correspondência
+- Os parâmetros de roteamento para a rota
+
+Por exemplo, aqui está uma pequena seção da saída `bin/rails routes` de uma rota RESTful:
+
+![rails routing](/imagens/rails_routing25.JPG)
+
+Você também pode usar a opção `--expanded` de ativar o modo de formatação de tabela expandida.
+
+![rails routing](/imagens/rails_routing26.JPG)
+
+Você pode pesquisar suas rotas com a opção grep: -g. Isso gera quaisquer rotas que correspondam parcialmente ao nome do método auxiliar de URL, ao verbo HTTP ou ao caminho do URL.
+
+![rails routing](/imagens/rails_routing27.JPG)
+
+Se você quiser ver apenas as rotas mapeadas para um controlador específico, existe a opção -c.
+
+![rails routing](/imagens/rails_routing28.JPG)
+
+
+### 6.2 Rotas de Teste
+As rotas devem ser incluídas na sua estratégia de teste (assim como o resto da sua aplicação). Rails oferece três asserções integradas projetadas para simplificar o teste de rotas:
+
+- assert_generates
+- assert_recognizes
+- assert_routing
+
