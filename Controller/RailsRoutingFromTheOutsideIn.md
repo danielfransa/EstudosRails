@@ -1332,3 +1332,34 @@ As rotas devem ser incluídas na sua estratégia de teste (assim como o resto da
 - assert_recognizes
 - assert_routing
 
+
+#### 6.2.1 A Asserção `assert_generates`
+
+`assert_generates` afirma que um conjunto específico de opções gera um caminho específico e pode ser usado com rotas padrão ou rotas personalizadas. Por exemplo:
+
+```rb
+assert_generates '/photos/1', { controller: 'photos', action: 'show', id: '1' }
+assert_generates '/about', controller: 'pages', action: 'about'
+```
+
+#### 6.2.2 A Asserção `assert_recognizes`
+
+`assert_recognizes` é o inverso de `assert_generates`. Ele afirma que um determinado caminho é reconhecido e o encaminha para um local específico em seu aplicativo. Por exemplo:
+
+```rb
+assert_recognizes({ controller: 'photos', action: 'show', id: '1' }, '/photos/1')
+```
+
+Você pode fornecer um argumento `:method` para especificar o verbo HTTP:
+
+```rb
+assert_recognizes({ controller: 'photos', action: 'create' }, { path: 'photos', method: :post })
+```
+
+#### 6.2.3 A Asserção `assert_routing`
+
+A asserção `assert_routing` verifica a rota nos dois sentidos: testa se o caminho gera as opções e se as opções geram o caminho. Assim, combina as funções de `assert_generates` e `assert_recognizes`:
+
+```rb
+assert_routing({ path: 'photos', method: :post }, { controller: 'photos', action: 'create' })
+```
