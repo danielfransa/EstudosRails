@@ -18,6 +18,6 @@
   - Exemplo de configuração do Action Mailer
   - Configuração do Action Mailer para Gmail
 ## 6 Teste de mala direta
-##  7Interceptando e observando e-mails
+##  7 Interceptando e observando e-mails
   - Interceptando e-mails
   - Observando e-mails
