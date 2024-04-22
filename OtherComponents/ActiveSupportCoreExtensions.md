@@ -2,7 +2,7 @@
 
   - Suporte Ativo Autônomo
   - Suporte ativo em uma aplicação Ruby on Rails
-  
+
 ## 2 Extensões para todos os objetos
   - `blank?` e `present?`
   - `presence`
