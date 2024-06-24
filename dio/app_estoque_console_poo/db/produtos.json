@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "nome": "Maça",
+    "descricao": "Maça da turma da mônica",
+    "preco": 2.5,
+    "quantidade": 20
+  },
+  {
+    "id": 2,
+    "nome": "Banana",
+    "descricao": "Nanica",
+    "preco": 1.5,
+    "quantidade": 20
+  },
+  {
+    "id": 3,
+    "nome": "Banana",
+    "descricao": "Prata",
+    "preco": 1.99,
+    "quantidade": 20
+  },
+  {
+    "id": 1697483434,
+    "nome": "Teste",
+    "descricao": "teste descricao",
+    "preco": 2.0,
+    "quantidade": 16
+  },
+  {
+    "id": 1718996410,
+    "nome": "Melão",
+    "descricao": "Melão docinho",
+    "preco": 2.66,
+    "quantidade": 40
+  },
+  {
+    "id": 1719231738,
+    "nome": "Morango",
+    "descricao": "Moranginho do Nordeste!",
+    "preco": 9.99,
+    "quantidade": 47
+  }
+]
