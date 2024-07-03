@@ -1,0 +1,18 @@
+default: &default
+  adapter: mysql2
+  host: 127.0.0.1
+  port: 3306
+  username: root
+  password: root
+  database: orm_mysql
+
+dev:
+  <<: *default
+
+prod:
+  <<: *default
+  port: <%= ENV["MYSQL_PORT"] || "3306" %>
+  host: <%= ENV["MYSQL_HOST"] || "localhost" %>
+  user: <%= ENV["MYSQL_USER"] || "root" %>
+  pass: <%= ENV["MYSQL_PASS"] || "root" %>
+  database: <%= ENV["MYSQL_PASS"] || "orm_mysql_prod" %>
