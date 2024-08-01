@@ -1,0 +1,9 @@
+source 'https://rubygems.org'
+
+ruby '3.1.0'
+
+gem 'byebug'
+gem 'terminal-table'
+gem 'yaml'
+gem 'mysql2'
+gem 'erb'
